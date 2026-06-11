@@ -1,6 +1,9 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
 import authRoutes from "./routes/authRoutes.js";
 import sessionRoutes from "./routes/sessionRoutes.js";
 import reservationRoutes from "./routes/reservationRoutes.js";
@@ -11,12 +14,7 @@ import checkoutRoutes from "./routes/checkout.js";
 import mitraRoutes from "./routes/mitraRoutes.js";
 import ratingRoutes from "./routes/ratingRoutes.js";
 import recommendationRoutes from "./routes/recommendationRoutes.js";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { askOpenRouter } from "../config/services/openRouterService.js";
-
-app.use("/api/ai", aiRoutes);
-
+import aiRoutes from "./routes/aiRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -42,10 +40,10 @@ app.use("/checkout", checkoutRoutes);
 app.use(mitraRoutes);
 app.use(ratingRoutes);
 app.use("/llm", recommendationRoutes);
+app.use("/api/ai", aiRoutes);
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server is running on port ${PORT}`);
 });
-
