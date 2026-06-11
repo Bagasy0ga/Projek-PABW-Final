@@ -13,7 +13,7 @@ import ratingRoutes from "./routes/ratingRoutes.js";
 import recommendationRoutes from "./routes/recommendationRoutes.js";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import aiRoutes from "./routes/aiRoutes.js";
+import { askOpenRouter } from "../config/services/openRouterService.js";
 
 app.use("/api/ai", aiRoutes);
 

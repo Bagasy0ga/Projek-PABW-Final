@@ -1,5 +1,5 @@
 import express from "express";
-import { askOpenRouter } from "../services/openRouterService.js";
+import { askOpenRouter } from "../config/services/openRouterService.js";
 
 const router = express.Router();
 
@@ -18,10 +18,11 @@ router.post("/chat", async (req, res) => {
 
     return res.json({
       success: true,
+      model: process.env.OPENROUTER_MODEL || "qwen/qwen3-next-80b-a3b-instruct:free",
       result
     });
   } catch (error) {
-    console.error("AI route error:", error.message);
+    console.error("AI route error:", error);
 
     return res.status(500).json({
       success: false,
