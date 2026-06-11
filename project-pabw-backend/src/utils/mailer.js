@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
+import dns from "node:dns/promises";
 
-function requiredEnv(name) {
+async function requiredEnv(name) {
   const value = process.env[name];
 
   if (!value) {
@@ -10,12 +11,24 @@ function requiredEnv(name) {
   return value;
 }
 
-function createTransporter() {
-  const host = requiredEnv("SMTP_HOST");
-  const user = requiredEnv("SMTP_USER");
-  const pass = requiredEnv("SMTP_PASS");
+async function getSmtpIPv4(host) {
+  const addresses = await dns.resolve4(host);
 
-  const port = Number(process.env.SMTP_PORT || 465);
+  if (!addresses || addresses.length === 0) {
+    throw new Error(`Tidak menemukan alamat IPv4 untuk SMTP host: ${host}`);
+  }
+
+  return addresses[0];
+}
+
+async function createTransporter() {
+  const smtpHost = await requiredEnv("SMTP_HOST");
+  const smtpUser = await requiredEnv("SMTP_USER");
+  const smtpPass = await requiredEnv("SMTP_PASS");
+
+  const smtpIPv4 = await getSmtpIPv4(smtpHost);
+
+  const port = Number(process.env.SMTP_PORT || 587);
 
   if (Number.isNaN(port)) {
     throw new Error("SMTP_PORT harus berupa angka.");
@@ -26,25 +39,34 @@ function createTransporter() {
       ? process.env.SMTP_SECURE === "true"
       : port === 465;
 
+  console.log("[SMTP CONFIG]", {
+    smtpHost,
+    smtpIPv4,
+    port,
+    secure,
+    user: smtpUser
+  });
+
   return nodemailer.createTransport({
-    host,
+    host: smtpIPv4,
     port,
     secure,
 
-    family: 4,
+    requireTLS: port === 587,
 
     auth: {
-      user,
-      pass
+      user: smtpUser,
+      pass: smtpPass
+    },
+
+    tls: {
+      servername: smtpHost,
+      minVersion: "TLSv1.2"
     },
 
     connectionTimeout: 10000,
     greetingTimeout: 10000,
-    socketTimeout: 15000,
-
-    tls: {
-      minVersion: "TLSv1.2"
-    }
+    socketTimeout: 15000
   });
 }
 
@@ -61,7 +83,7 @@ export async function sendMail({ to, subject, html }) {
     throw new Error("Isi email wajib diisi.");
   }
 
-  const transporter = createTransporter();
+  const transporter = await createTransporter();
 
   return transporter.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
