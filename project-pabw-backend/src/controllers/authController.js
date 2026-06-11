@@ -693,14 +693,28 @@ export const login = async (req, res) => {
     await saveOtp(connection, user.email, "login_otp", otp);
 
     await connection.commit();
+    connection.release();
+    connection = null;
 
     try {
       await sendLoginOtp(user.email, user.nama, otp);
     } catch (mailError) {
-      console.error("Email OTP login gagal dikirim:", mailError.message);
+      console.error("Email OTP login gagal dikirim:", {
+        message: mailError.message,
+        code: mailError.code,
+        command: mailError.command,
+        response: mailError.response,
+        responseCode: mailError.responseCode,
+        stack: mailError.stack
+      });
 
       return res.status(503).json({
         message: "Password benar, tetapi kode OTP login gagal dikirim ke email.",
+        error: mailError.message,
+        code: mailError.code,
+        command: mailError.command,
+        response: mailError.response,
+        responseCode: mailError.responseCode,
         requires_login_otp: true,
         data: {
           email: user.email,
@@ -724,16 +738,23 @@ export const login = async (req, res) => {
       try {
         await connection.rollback();
       } catch {}
+
+      try {
+        connection.release();
+      } catch {}
     }
+
+    console.error("Login error:", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack
+    });
 
     return res.status(500).json({
       message: "Login gagal.",
-      error: error.message
+      error: error.message,
+      code: error.code
     });
-  } finally {
-    if (connection) {
-      connection.release();
-    }
   }
 };
 
