@@ -1,28 +1,64 @@
 import nodemailer from "nodemailer";
 
+function requiredEnv(name) {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`${name} belum dikonfigurasi di environment.`);
+  }
+
+  return value;
+}
+
 function createTransporter() {
+  const host = requiredEnv("SMTP_HOST");
+  const user = requiredEnv("SMTP_USER");
+  const pass = requiredEnv("SMTP_PASS");
+
+  const port = Number(process.env.SMTP_PORT || 465);
+
+  if (Number.isNaN(port)) {
+    throw new Error("SMTP_PORT harus berupa angka.");
+  }
+
+  const secure =
+    process.env.SMTP_SECURE !== undefined
+      ? process.env.SMTP_SECURE === "true"
+      : port === 465;
+
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 465),
-    secure: process.env.SMTP_SECURE === "true",
+    host,
+    port,
+    secure,
+
+    family: 4,
+
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
+      user,
+      pass
+    },
+
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+
+    tls: {
+      minVersion: "TLSv1.2"
     }
   });
 }
 
 export async function sendMail({ to, subject, html }) {
-  if (!process.env.SMTP_HOST) {
-    throw new Error("SMTP_HOST belum dikonfigurasi di file .env.");
+  if (!to) {
+    throw new Error("Tujuan email wajib diisi.");
   }
 
-  if (!process.env.SMTP_USER) {
-    throw new Error("SMTP_USER belum dikonfigurasi di file .env.");
+  if (!subject) {
+    throw new Error("Subject email wajib diisi.");
   }
 
-  if (!process.env.SMTP_PASS) {
-    throw new Error("SMTP_PASS belum dikonfigurasi di file .env.");
+  if (!html) {
+    throw new Error("Isi email wajib diisi.");
   }
 
   const transporter = createTransporter();
