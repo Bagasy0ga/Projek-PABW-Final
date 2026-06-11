@@ -13,6 +13,9 @@ import ratingRoutes from "./routes/ratingRoutes.js";
 import recommendationRoutes from "./routes/recommendationRoutes.js";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import aiRoutes from "./routes/aiRoutes.js";
+
+app.use("/api/ai", aiRoutes);
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,3 +48,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
