@@ -30,8 +30,25 @@ function createOtp() {
   return String(crypto.randomInt(100000, 1000000));
 }
 
+function isLoginOtpEnabled() {
+  return process.env.LOGIN_OTP_ENABLED !== "false";
+}
+
+function isOtpDebugEnabled() {
+  return process.env.OTP_DEBUG_ENABLED === "true";
+}
+
+function getOtpDebugData(otp) {
+  if (!isOtpDebugEnabled()) return {};
+  return { debug_otp: otp };
+}
+
 function hashOtp(email, purpose, otp) {
   const secret = process.env.OTP_HASH_SECRET || process.env.JWT_SECRET;
+
+  if (!secret) {
+    throw new Error("OTP_HASH_SECRET atau JWT_SECRET belum diset di environment.");
+  }
 
   return crypto
     .createHmac("sha256", secret)
@@ -50,7 +67,7 @@ function safeOtpCompare(a, b) {
 
 function createToken(user, sessionId) {
   if (!process.env.JWT_SECRET) {
-    throw new Error("JWT_SECRET belum diset di file .env.");
+    throw new Error("JWT_SECRET belum diset di environment.");
   }
 
   return jwt.sign(
@@ -115,6 +132,40 @@ async function sendResetPasswordOtp(email, name, otp) {
         <h1 style="letter-spacing: 6px;">${otp}</h1>
         <p>Kode ini berlaku selama 10 menit.</p>
         <p>Jika kamu tidak meminta reset password, abaikan email ini.</p>
+      </div>
+    `
+  });
+}
+
+async function sendLoginOtp(email, name, otp) {
+  await sendMail({
+    to: email,
+    subject: "Kode Login PABW",
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2>Kode Login PABW</h2>
+        <p>Halo ${name},</p>
+        <p>Gunakan kode berikut untuk menyelesaikan proses login:</p>
+        <h1 style="letter-spacing: 6px;">${otp}</h1>
+        <p>Kode ini berlaku selama 10 menit.</p>
+        <p>Jika kamu tidak mencoba login, abaikan email ini.</p>
+      </div>
+    `
+  });
+}
+
+async function sendChangePasswordOtp(email, name, otp) {
+  await sendMail({
+    to: email,
+    subject: "Kode Ganti Password PABW",
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2>Ganti Password PABW</h2>
+        <p>Halo ${name},</p>
+        <p>Gunakan kode berikut untuk mengonfirmasi perubahan password:</p>
+        <h1 style="letter-spacing: 6px;">${otp}</h1>
+        <p>Kode ini berlaku selama 10 menit.</p>
+        <p>Jika kamu tidak meminta ganti password, abaikan email ini.</p>
       </div>
     `
   });
@@ -241,25 +292,41 @@ export const register = async (req, res) => {
 
     await saveOtp(connection, emailNormalized, "verify_email", otp);
 
-    await sendVerificationOtp(emailNormalized, cleanName, otp);
-
     await connection.commit();
+
+    try {
+      await sendVerificationOtp(emailNormalized, cleanName, otp);
+    } catch (mailError) {
+      console.error("Email verifikasi gagal dikirim:", mailError.message);
+
+      return res.status(503).json({
+        message: "Register berhasil disimpan, tetapi OTP gagal dikirim ke email.",
+        data: {
+          email: emailNormalized,
+          requires_verification: true,
+          ...getOtpDebugData(otp)
+        }
+      });
+    }
 
     return res.status(201).json({
       message: "Register berhasil. Kode OTP sudah dikirim ke email.",
       data: {
         email: emailNormalized,
-        requires_verification: true
+        requires_verification: true,
+        ...getOtpDebugData(otp)
       }
     });
   } catch (error) {
-    await connection.rollback();
+    try {
+      await connection.rollback();
+    } catch {}
 
     console.error("Register error:", error);
 
     return res.status(500).json({
       message: "Register gagal.",
-      error: "Gagal mengirim OTP atau menyimpan data register."
+      error: error.message
     });
   } finally {
     connection.release();
@@ -371,7 +438,6 @@ export const verifyEmail = async (req, res) => {
     }
 
     const user = normalizeUser(users[0]);
-
     const session = await createLoginSession(user);
 
     if (!session.allowed) {
@@ -433,19 +499,35 @@ export const resendVerification = async (req, res) => {
     await connection.beginTransaction();
 
     await saveOtp(connection, emailNormalized, "verify_email", otp);
-    await sendVerificationOtp(emailNormalized, users[0].name, otp);
 
     await connection.commit();
+
+    try {
+      await sendVerificationOtp(emailNormalized, users[0].name, otp);
+    } catch (mailError) {
+      console.error("Email OTP verifikasi gagal dikirim:", mailError.message);
+
+      return res.status(503).json({
+        message: "Kode OTP baru berhasil dibuat, tetapi gagal dikirim ke email.",
+        data: {
+          email: emailNormalized,
+          ...getOtpDebugData(otp)
+        }
+      });
+    }
 
     return res.json({
       message: "Kode OTP baru sudah dikirim ke email.",
       data: {
-        email: emailNormalized
+        email: emailNormalized,
+        ...getOtpDebugData(otp)
       }
     });
   } catch (error) {
     if (connection) {
-      await connection.rollback();
+      try {
+        await connection.rollback();
+      } catch {}
     }
 
     return res.status(500).json({
@@ -506,7 +588,7 @@ export const login = async (req, res) => {
 
       if (!mitra.email) {
         return res.status(400).json({
-          message: "Akun mitra ini tidak memiliki email untuk menerima OTP login."
+          message: "Akun mitra ini tidak memiliki email."
         });
       }
 
@@ -585,27 +667,63 @@ export const login = async (req, res) => {
       }
     }
 
+    if (!isLoginOtpEnabled()) {
+      const session = await createLoginSession(user);
+
+      if (!session.allowed) {
+        return res.status(403).json({
+          message: session.message
+        });
+      }
+
+      const token = createToken(user, session.id_login);
+
+      return res.json({
+        message: "Login berhasil.",
+        token,
+        data: user
+      });
+    }
+
     const otp = createOtp();
 
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
     await saveOtp(connection, user.email, "login_otp", otp);
-    await sendLoginOtp(user.email, user.nama, otp);
 
     await connection.commit();
+
+    try {
+      await sendLoginOtp(user.email, user.nama, otp);
+    } catch (mailError) {
+      console.error("Email OTP login gagal dikirim:", mailError.message);
+
+      return res.status(503).json({
+        message: "Password benar, tetapi kode OTP login gagal dikirim ke email.",
+        requires_login_otp: true,
+        data: {
+          email: user.email,
+          role: user.role,
+          ...getOtpDebugData(otp)
+        }
+      });
+    }
 
     return res.json({
       message: "Password benar. Kode OTP login sudah dikirim ke email.",
       requires_login_otp: true,
       data: {
         email: user.email,
-        role: user.role
+        role: user.role,
+        ...getOtpDebugData(otp)
       }
     });
   } catch (error) {
     if (connection) {
-      await connection.rollback();
+      try {
+        await connection.rollback();
+      } catch {}
     }
 
     return res.status(500).json({
@@ -885,20 +1003,36 @@ export const forgotPassword = async (req, res) => {
 
     await saveOtp(connection, emailNormalized, "reset_password", otp);
 
-    await sendResetPasswordOtp(emailNormalized, account.name, otp);
-
     await connection.commit();
+
+    try {
+      await sendResetPasswordOtp(emailNormalized, account.name, otp);
+    } catch (mailError) {
+      console.error("Email OTP reset password gagal dikirim:", mailError.message);
+
+      return res.status(503).json({
+        message: "Kode OTP reset password berhasil dibuat, tetapi gagal dikirim ke email.",
+        data: {
+          email: emailNormalized,
+          user_type: userTypeNormalized,
+          ...getOtpDebugData(otp)
+        }
+      });
+    }
 
     return res.json({
       message: "Kode OTP reset password sudah dikirim ke email.",
       data: {
         email: emailNormalized,
-        user_type: userTypeNormalized
+        user_type: userTypeNormalized,
+        ...getOtpDebugData(otp)
       }
     });
   } catch (error) {
     if (connection) {
-      await connection.rollback();
+      try {
+        await connection.rollback();
+      } catch {}
     }
 
     return res.status(500).json({
@@ -1145,20 +1279,37 @@ export const changePassword = async (req, res) => {
     await connection.beginTransaction();
 
     await saveOtp(connection, account.email, "change_password", otp);
-    await sendChangePasswordOtp(account.email, account.name, otp);
 
     await connection.commit();
+
+    try {
+      await sendChangePasswordOtp(account.email, account.name, otp);
+    } catch (mailError) {
+      console.error("Email OTP ganti password gagal dikirim:", mailError.message);
+
+      return res.status(503).json({
+        message: "Kode OTP ganti password berhasil dibuat, tetapi gagal dikirim ke email.",
+        requires_change_password_otp: true,
+        data: {
+          email: account.email,
+          ...getOtpDebugData(otp)
+        }
+      });
+    }
 
     return res.json({
       message: "Kode OTP ganti password sudah dikirim ke email.",
       requires_change_password_otp: true,
       data: {
-        email: account.email
+        email: account.email,
+        ...getOtpDebugData(otp)
       }
     });
   } catch (error) {
     if (connection) {
-      await connection.rollback();
+      try {
+        await connection.rollback();
+      } catch {}
     }
 
     return res.status(500).json({
@@ -1526,39 +1677,6 @@ export const confirmResetPassword = async (req, res) => {
     });
   }
 };
-
-async function sendLoginOtp(email, name, otp) {
-  await sendMail({
-    to: email,
-    subject: "Kode Login PABW",
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <h2>Kode Login PABW</h2>
-        <p>Halo ${name},</p>
-        <p>Gunakan kode berikut untuk menyelesaikan proses login:</p>
-        <h1 style="letter-spacing: 6px;">${otp}</h1>
-        <p>Kode ini berlaku selama 10 menit.</p>
-        <p>Jika kamu tidak mencoba login, abaikan email ini.</p>
-      </div>
-    `
-  });
-}
-async function sendChangePasswordOtp(email, name, otp) {
-  await sendMail({
-    to: email,
-    subject: "Kode Ganti Password PABW",
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <h2>Ganti Password PABW</h2>
-        <p>Halo ${name},</p>
-        <p>Gunakan kode berikut untuk mengonfirmasi perubahan password:</p>
-        <h1 style="letter-spacing: 6px;">${otp}</h1>
-        <p>Kode ini berlaku selama 10 menit.</p>
-        <p>Jika kamu tidak meminta ganti password, abaikan email ini.</p>
-      </div>
-    `
-  });
-}
 
 export const updateProfile = async (req, res) => {
   try {

@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import dns from "node:dns/promises";
 
-async function requiredEnv(name) {
+function requiredEnv(name) {
   const value = process.env[name];
 
   if (!value) {
@@ -22,9 +22,9 @@ async function getSmtpIPv4(host) {
 }
 
 async function createTransporter() {
-  const smtpHost = await requiredEnv("SMTP_HOST");
-  const smtpUser = await requiredEnv("SMTP_USER");
-  const smtpPass = await requiredEnv("SMTP_PASS");
+  const smtpHost = requiredEnv("SMTP_HOST");
+  const smtpUser = requiredEnv("SMTP_USER");
+  const smtpPass = requiredEnv("SMTP_PASS");
 
   const smtpIPv4 = await getSmtpIPv4(smtpHost);
 
@@ -51,7 +51,6 @@ async function createTransporter() {
     host: smtpIPv4,
     port,
     secure,
-
     requireTLS: port === 587,
 
     auth: {
