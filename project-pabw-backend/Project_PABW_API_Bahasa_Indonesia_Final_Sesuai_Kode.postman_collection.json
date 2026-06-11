@@ -1,0 +1,1239 @@
+{
+  "info": {
+    "_postman_id": "1ae09618-5a16-4327-ad99-e2348a144059",
+    "name": "Project PABW API Bahasa Indonesia - Updated Endpoint Use Case",
+    "description": "Postman collection dari ZIP terbaru project-pabw(2).zip. Nama folder dan request sudah memakai bahasa Indonesia. Base URL memakai {{BASE_URL}}.\n\nUpdate: collection ini sudah ditambahkan endpoint UC3, UC4, UC5, UC6, UC9, UC11, UC12, UC17, dan UC18.\n\nVersi final dicek ulang: endpoint baru sesuai kode tambahan, endpoint lama checkin/checkout disesuaikan dari id_customer ke id_user sesuai route backend ZIP.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "49860475"
+  },
+  "item": [
+    {
+      "name": "Cek Server",
+      "item": [
+        {
+          "name": "Cek Server",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                ""
+              ]
+            },
+            "description": "Mengecek apakah server API berjalan."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Autentikasi",
+      "item": [
+        {
+          "name": "Daftar Customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bagas Yoga\",\n  \"email\": \"bagas@example.com\",\n  \"password\": \"password123\",\n  \"phone_number\": \"081234567890\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/register",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "description": "Mendaftarkan akun customer baru."
+          },
+          "response": []
+        },
+        {
+          "name": "Login Customer atau Mitra",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"bagas@example.com\",\n  \"password\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/login",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "description": "Login untuk customer atau mitra."
+          },
+          "response": []
+        },
+        {
+          "name": "Lupa Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/forgot-password",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "forgot-password"
+              ]
+            },
+            "description": "UC5 Lupa Password. Mengubah password customer atau mitra berdasarkan email dan user_type.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"bagas@example.com\",\n  \"new_password\": \"passwordbaru123\",\n  \"user_type\": \"customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sesi",
+      "item": [
+        {
+          "name": "Lihat Semua Riwayat Sesi",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/sessions?limit=20&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "sessions"
+              ],
+              "query": [
+                {
+                  "key": "user_type",
+                  "value": "customer",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Mengambil semua riwayat sesi login."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Sesi Aktif",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/sessions/active",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "sessions",
+                "active"
+              ],
+              "query": [
+                {
+                  "key": "user_type",
+                  "value": "customer",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Mengambil daftar sesi yang sedang aktif."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Sesi Aktif Berdasarkan ID User",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/sessions/user/:id_user",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "sessions",
+                "user",
+                ":id_user"
+              ],
+              "variable": [
+                {
+                  "key": "id_user",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Mengambil sesi aktif berdasarkan ID user."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reservasi",
+      "item": [
+        {
+          "name": "Lihat Riwayat Reservasi Customer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/customer/:id_user/history",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "customer",
+                ":id_user",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "confirmed",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id_user",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Mengambil riwayat reservasi customer."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Detail Reservasi Customer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/customer/:id_user/detail/:id_history",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "customer",
+                ":id_user",
+                "detail",
+                ":id_history"
+              ],
+              "variable": [
+                {
+                  "key": "id_user",
+                  "value": "1"
+                },
+                {
+                  "key": "id_history",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Mengambil detail reservasi customer berdasarkan ID history."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Statistik Reservasi Customer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/customer/:id_user/stats",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "customer",
+                ":id_user",
+                "stats"
+              ],
+              "variable": [
+                {
+                  "key": "id_user",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Mengambil statistik reservasi customer."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Riwayat Reservasi Mitra",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mitra/:id_company_profile/history",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mitra",
+                ":id_company_profile",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "confirmed",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id_company_profile",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Mengambil riwayat reservasi berdasarkan ID company profile mitra."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Semua Reservasi",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/reservations",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reservations"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "confirmed",
+                  "disabled": true
+                },
+                {
+                  "key": "id_user",
+                  "value": "{{id_user}}",
+                  "disabled": true
+                },
+                {
+                  "key": "id_company_profile",
+                  "value": "{{id_company_profile}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Mengambil semua data reservasi."
+          },
+          "response": []
+        },
+        {
+          "name": "Pesan Kamar Hotel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/reservations/book",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reservations",
+                "book"
+              ]
+            },
+            "description": "UC6 Memesan Kamar Hotel. Membuat reservasi dan mengubah status kamar menjadi not available.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_user\": \"{{id_user}}\",\n  \"id_list_kamar\": \"{{id_list_kamar}}\",\n  \"checkin_time\": \"2026-05-30 14:00:00\",\n  \"checkout_time\": \"2026-05-31 12:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Kamar",
+      "item": [
+        {
+          "name": "Tambah Kamar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"room_number\": \"101\",\n  \"price\": 350000,\n  \"id_list_hotel\": \"2\",\n  \"id_detail_kamar\": \"2\",\n  \"status\": \"available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/rooms",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "rooms"
+              ]
+            },
+            "description": "Menambahkan data kamar baru."
+          },
+          "response": []
+        },
+        {
+          "name": "Melihat Kamar By Mitra",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mitra/:id_company_profile/availability?include_rooms=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mitra",
+                ":id_company_profile",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "include_rooms",
+                  "value": "true"
+                },
+                {
+                  "key": "id_list_hotel",
+                  "value": "{{id_list_hotel}}",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id_company_profile",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Melihat daftar kamar dan ketersediaan kamar milik mitra."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Kategori Kamar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/rooms/categories?id_list_hotel={{id_list_hotel}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "rooms",
+                "categories"
+              ],
+              "query": [
+                {
+                  "key": "id_list_hotel",
+                  "value": "{{id_list_hotel}}"
+                }
+              ]
+            },
+            "description": "UC3 Melihat Kategori Kamar. Query id_list_hotel dapat dipakai untuk membatasi kategori berdasarkan hotel tertentu."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Kamar Hotel yang Tersedia",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/rooms/available?id_list_hotel={{id_list_hotel}}&limit=20&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "rooms",
+                "available"
+              ],
+              "query": [
+                {
+                  "key": "id_list_hotel",
+                  "value": "{{id_list_hotel}}"
+                },
+                {
+                  "key": "type_room",
+                  "value": "Deluxe",
+                  "disabled": true
+                },
+                {
+                  "key": "capacity",
+                  "value": "2",
+                  "disabled": true
+                },
+                {
+                  "key": "min_price",
+                  "value": "100000",
+                  "disabled": true
+                },
+                {
+                  "key": "max_price",
+                  "value": "500000",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "UC4 Melihat Kamar Hotel yang Tersedia berdasarkan hotel dan filter opsional."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Ketersediaan Kamar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/rooms/availability?id_company_profile={{id_company_profile}}&include_rooms=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "rooms",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "id_company_profile",
+                  "value": "{{id_company_profile}}"
+                },
+                {
+                  "key": "id_list_hotel",
+                  "value": "{{id_list_hotel}}",
+                  "disabled": true
+                },
+                {
+                  "key": "include_rooms",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "UC18 Melihat Ketersediaan Kamar. Bisa difilter berdasarkan id_company_profile atau id_list_hotel."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Hotel",
+      "item": [
+        {
+          "name": "Lihat Semua Hotel",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/hotel/all",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "hotel",
+                "all"
+              ]
+            },
+            "description": "Mengambil semua data hotel."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Hotel Berdasarkan ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/hotel/:id_list_hotel",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "hotel",
+                ":id_list_hotel"
+              ],
+              "variable": [
+                {
+                  "key": "id_list_hotel",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Mengambil data hotel berdasarkan ID hotel."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Hotel Berdasarkan ID Perusahaan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/hotel/company/:id_company_profile",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "hotel",
+                "company",
+                ":id_company_profile"
+              ],
+              "variable": [
+                {
+                  "key": "id_company_profile",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Mengambil data hotel berdasarkan ID company profile."
+          },
+          "response": []
+        },
+        {
+          "name": "Tambahkan Deskripsi Hotel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n      \"type_room\": \"Double Room Basic\" ,\n      \"description\": \"Kamar dengan tempat tidur double bed.\",\n      \"facility\": \"WiFi, AC, Mini Bar\",\n      \"capacity\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/hotel/add_description",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "hotel",
+                "add_description"
+              ]
+            },
+            "description": "Menambahkan atau mengubah deskripsi hotel."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Booking dan Check In",
+      "item": [
+        {
+          "name": "Ambil Data Reservasi untuk Check In",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/booking/reservasi/:id_user/:id_history",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "booking",
+                "reservasi",
+                ":id_user",
+                ":id_history"
+              ],
+              "variable": [
+                {
+                  "key": "id_user",
+                  "value": "1"
+                },
+                {
+                  "key": "id_history",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Mengambil data reservasi yang akan dipakai untuk proses check in."
+          },
+          "response": []
+        },
+        {
+          "name": "Proses Check In",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_user\": \"{{id_user}}\",\n  \"checkin_time\": \"2026-05-20 14:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/booking/reservasi/:id_history/checkin",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "booking",
+                "reservasi",
+                ":id_history",
+                "checkin"
+              ],
+              "variable": [
+                {
+                  "key": "id_history",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Melakukan proses check in. Backend menerima id_history dari path dan id_user dari body."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Riwayat Check In",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/booking/checkin-history?id_user={{id_user}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "booking",
+                "checkin-history"
+              ],
+              "query": [
+                {
+                  "key": "id_user",
+                  "value": "{{id_user}}"
+                }
+              ]
+            },
+            "description": "Mengambil riwayat check in customer berdasarkan id_user."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Check Out",
+      "item": [
+        {
+          "name": "Ambil Detail Check Out",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/checkout/details?id_history={{id_history}}&id_user={{id_user}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "checkout",
+                "details"
+              ],
+              "query": [
+                {
+                  "key": "id_history",
+                  "value": "{{id_history}}"
+                },
+                {
+                  "key": "id_user",
+                  "value": "{{id_user}}"
+                }
+              ]
+            },
+            "description": "Mengambil detail data untuk proses check out berdasarkan id_history dan id_user."
+          },
+          "response": []
+        },
+        {
+          "name": "Proses Check Out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_history\": \"{{id_history}}\",\n  \"id_user\": \"{{id_user}}\",\n  \"checkout_time\": \"2026-05-21 12:00:00\",\n  \"additional_charges\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/checkout/perform",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "checkout",
+                "perform"
+              ]
+            },
+            "description": "Melakukan proses check out. Backend menerima id_history dan id_user dari body."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Riwayat Check Out",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/checkout/history?id_user={{id_user}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "checkout",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "id_user",
+                  "value": "{{id_user}}"
+                }
+              ]
+            },
+            "description": "Mengambil riwayat check out customer berdasarkan id_user."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Mitra",
+      "item": [
+        {
+          "name": "Ubah Deskripsi Hotel",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_company_profile\": \"{{id_company_profile}}\",\n  \"hotel_name\": \"Hotel Baru\",\n  \"location\": \"Samarinda\",\n  \"contact_person\": \"Admin Hotel\",\n  \"contact_email\": \"hotel@example.com\",\n  \"contact_phone\": \"081234567890\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/mitra/hotels/{{id_list_hotel}}/description",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mitra",
+                "hotels",
+                "{{id_list_hotel}}",
+                "description"
+              ]
+            },
+            "description": "Mengubah deskripsi hotel milik mitra."
+          },
+          "response": []
+        },
+        {
+          "name": "Ubah Kategori Kamar",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_company_profile\": \"{{id_company_profile}}\",\n  \"type_room\": \"Deluxe\",\n  \"description\": \"Kamar deluxe dengan fasilitas lengkap.\",\n  \"facility\": \"AC, TV, WiFi\",\n  \"capacity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/mitra/room-categories/{{id_detail_kamar}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mitra",
+                "room-categories",
+                "{{id_detail_kamar}}"
+              ]
+            },
+            "description": "Mengubah data kategori kamar."
+          },
+          "response": []
+        },
+        {
+          "name": "Ubah Status Kamar",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_company_profile\": \"{{id_company_profile}}\",\n  \"status\": \"available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/mitra/rooms/{{id_list_kamar}}/status",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mitra",
+                "rooms",
+                "{{id_list_kamar}}",
+                "status"
+              ]
+            },
+            "description": "Mengubah status kamar."
+          },
+          "response": []
+        },
+        {
+          "name": "Tambah Mitra",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/mitra",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mitra"
+              ]
+            },
+            "description": "UC11 Menambahkan Mitra baru.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"PT Hotel Contoh\",\n  \"address\": \"Balikpapan\",\n  \"phone_number\": \"081234567890\",\n  \"email\": \"mitra@example.com\",\n  \"username\": \"mitra_contoh\",\n  \"password\": \"password123\",\n  \"id_user\": \"{{id_user}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Hapus Mitra",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mitra/:id_company_profile",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mitra",
+                ":id_company_profile"
+              ],
+              "variable": [
+                {
+                  "key": "id_company_profile",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "UC12 Menghapus Mitra berdasarkan id_company_profile. Tidak bisa dihapus jika masih punya hotel atau reservasi."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Pendapatan Mitra",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mitra/:id_company_profile/revenue?start_date=2026-05-01&end_date=2026-05-31",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mitra",
+                ":id_company_profile",
+                "revenue"
+              ],
+              "query": [
+                {
+                  "key": "start_date",
+                  "value": "2026-05-01"
+                },
+                {
+                  "key": "end_date",
+                  "value": "2026-05-31"
+                },
+                {
+                  "key": "id_list_hotel",
+                  "value": "{{id_list_hotel}}",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id_company_profile",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "UC17 Melihat Pendapatan Mitra. Filter tanggal dan hotel bersifat opsional."
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Ketersediaan Kamar Mitra",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mitra/:id_company_profile/availability?include_rooms=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mitra",
+                ":id_company_profile",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "include_rooms",
+                  "value": "true"
+                },
+                {
+                  "key": "id_list_hotel",
+                  "value": "{{id_list_hotel}}",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id_company_profile",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "UC18 Melihat Ketersediaan Kamar berdasarkan mitra."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Rating",
+      "item": [
+        {
+          "name": "Berikan Rating ke Hotel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/ratings/hotel",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "ratings",
+                "hotel"
+              ]
+            },
+            "description": "UC9 Memberikan Rating ke Hotel. Rating hanya valid jika customer memiliki reservasi pada hotel tersebut.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_user\": \"{{id_user}}\",\n  \"id_list_hotel\": \"{{id_list_hotel}}\",\n  \"id_history\": \"{{id_history}}\",\n  \"rating\": 5,\n  \"review\": \"Hotel nyaman dan pelayanan bagus.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Lihat Rating Hotel",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/hotels/:id_list_hotel/ratings?limit=20&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "hotels",
+                ":id_list_hotel",
+                "ratings"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id_list_hotel",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Melihat daftar rating dan rata-rata rating hotel."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

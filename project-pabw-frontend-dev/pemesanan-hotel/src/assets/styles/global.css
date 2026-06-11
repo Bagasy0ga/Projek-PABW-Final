@@ -1,0 +1,131 @@
+* {
+  margin: 0; padding: 0; box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #1c3250 #eef2f7;
+}
+
+:root {
+  /* ── Navy (warna utama) ── */
+  --navy-900: #0d1b2e;
+  --navy-800: #132338;
+  --navy-700: #1c3250;
+  --navy-600: #254168;
+  --navy-400: #3d5a87;
+  --navy-200: #8faabf;
+  --navy-50:  #eef2f7;
+
+  /* ── Amber / Tembaga (satu-satunya aksen) ── */
+  --amber-700: #a0621a;
+  --amber-500: #c9843a;
+  --amber-400: #dfa255;
+  --amber-300: #eec27a;
+  --amber-100: #f7e2c0;
+  --amber-50:  #fdf6ec;
+
+  /* ── Alias semantik ── */
+  --primary:      var(--navy-900);
+  --primary-soft: var(--navy-700);
+  --accent:       var(--amber-500);
+  --accent-dark:  var(--amber-700);
+  --accent-light: var(--amber-100);
+
+  /* ── Text ── */
+  --text-dark:  var(--navy-900);
+  --text-mid:   var(--navy-600);
+  --text-light: var(--navy-400);
+  --text-muted: var(--navy-200);
+
+  /* ── Surface ── */
+  --bg-page:   var(--navy-50);
+  --bg-white:  #ffffff;
+  --bg-card:   #ffffff;
+
+  /* ── Border ── */
+  --border:     #dde3ef;
+  --border-mid: #c4cedf;
+
+  /* ── Success ── */
+  --success: #2d7a4f;
+
+  /* ── Shadow ── */
+  --shadow-sm: 0 2px 12px rgba(13,27,46,.07);
+  --shadow:    0 4px 24px rgba(13,27,46,.10);
+  --shadow-lg: 0 12px 48px rgba(13,27,46,.15);
+
+  /* ── Font ── */
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-body:    'DM Sans', 'Segoe UI', sans-serif;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: 15px; line-height: 1.65;
+  color: var(--text-dark);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+}
+
+.container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: .5rem; padding: 11px 28px;
+  border: none; border-radius: 3px;
+  font-family: var(--font-body);
+  font-size: .78rem; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase;
+  cursor: pointer; text-decoration: none;
+  transition: all .3s cubic-bezier(.16,1,.3,1);
+  position: relative; overflow: hidden;
+}
+
+.btn::after {
+  content: ''; position: absolute; inset: 0;
+  background: rgba(255,255,255,.12);
+  opacity: 0; transition: opacity .3s;
+}
+.btn:hover::after { opacity: 1; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(201,132,58,.35);
+}
+.btn-primary:hover {
+  background: var(--accent-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(201,132,58,.45);
+}
+
+.btn-secondary {
+  background: var(--navy-700);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(28,50,80,.25);
+}
+.btn-secondary:hover {
+  background: var(--navy-600);
+  transform: translateY(-2px);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-dark);
+  border: 1.5px solid var(--border-mid);
+}
+.btn-outline:hover {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  background: var(--amber-50);
+}
+
+.btn-full { width: 100%; padding: 14px; font-size: .85rem; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-page); }
+::-webkit-scrollbar-thumb {
+  background: var(--navy-600);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
