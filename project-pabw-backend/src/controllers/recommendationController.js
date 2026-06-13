@@ -1,4 +1,4 @@
-import pool from "../config/db.js";
+import supabase from "../config/db.js";
 
 const LLM_PROVIDER = String(process.env.LLM_PROVIDER || "ollama").toLowerCase().trim();
 

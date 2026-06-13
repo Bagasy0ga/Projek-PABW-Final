@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import pool from "../config/db.js";
+import supabase from "../config/db.js";
 import { sendMail } from "../utils/mailer.js";
+import * as queryHelper from "../utils/queryHelper.js";
 
 function normalizeEmail(email) {
   return String(email || "").toLowerCase().trim();
@@ -85,22 +86,23 @@ function createToken(user, sessionId) {
   );
 }
 
-async function saveOtp(connection, email, purpose, otp) {
+async function saveOtp(email, purpose, otp) {
   const otpHash = hashOtp(email, purpose, otp);
 
-  await connection.query(
-    `UPDATE email_verification_codes
-     SET consumed_at = NOW()
-     WHERE email = ? AND purpose = ? AND consumed_at IS NULL`,
-    [email, purpose]
-  );
+  await queryHelper.deleteRecord("email_verification_codes", {
+    email,
+    purpose,
+    consumed_at: null
+  });
 
-  await connection.query(
-    `INSERT INTO email_verification_codes
-     (email, purpose, otp_hash, attempts, expires_at)
-     VALUES (?, ?, ?, 0, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
-    [email, purpose, otpHash]
-  );
+  await queryHelper.insert("email_verification_codes", {
+    email,
+    purpose,
+    otp_hash: otpHash,
+    attempts: 0,
+    expires_at: new Date(Date.now() + 10 * 60000).toISOString(),
+    created_at: new Date().toISOString()
+  });
 }
 
 async function sendVerificationOtp(email, name, otp) {
@@ -172,14 +174,15 @@ async function sendChangePasswordOtp(email, name, otp) {
 }
 
 async function createLoginSession(user) {
-  const [existingSession] = await pool.query(
-    `SELECT id_login, last_activity
-     FROM session_login
-     WHERE id_user = ? AND user_type = ? AND status = 'active'
-     ORDER BY login_time DESC
-     LIMIT 1`,
-    [user.id, user.role]
-  );
+  const existingSession = await queryHelper.select("session_login", {
+    where: {
+      id_user: user.id,
+      user_type: user.role,
+      status: "active"
+    },
+    order: { column: "login_time", ascending: false },
+    limit: 1
+  });
 
   if (existingSession.length > 0) {
     const lastActivity = new Date(existingSession[0].last_activity);
@@ -193,24 +196,28 @@ async function createLoginSession(user) {
       };
     }
 
-    await pool.query(
-      `UPDATE session_login
-       SET status = 'inactive',
-           logout_time = NOW(),
-           last_activity = NOW()
-       WHERE id_login = ?`,
-      [existingSession[0].id_login]
+    await queryHelper.update(
+      "session_login",
+      {
+        status: "inactive",
+        logout_time: new Date().toISOString(),
+        last_activity: new Date().toISOString()
+      },
+      { id_login: existingSession[0].id_login }
     );
   }
 
   const sessionId = crypto.randomUUID();
 
-  await pool.query(
-    `INSERT INTO session_login
-     (id_login, id_user, user_type, status, login_time, last_activity, logout_time)
-     VALUES (?, ?, ?, 'active', NOW(), NOW(), NULL)`,
-    [sessionId, user.id, user.role]
-  );
+  await queryHelper.insert("session_login", {
+    id_login: sessionId,
+    id_user: user.id,
+    user_type: user.role,
+    status: "active",
+    login_time: new Date().toISOString(),
+    last_activity: new Date().toISOString(),
+    logout_time: null
+  });
 
   return {
     allowed: true,
@@ -229,8 +236,6 @@ function normalizeUser(row) {
 }
 
 export const register = async (req, res) => {
-  const connection = await pool.getConnection();
-
   try {
     const { name, email, password, phone_number } = req.body;
 
@@ -256,43 +261,38 @@ export const register = async (req, res) => {
     const passwordHash = await hashPassword(password);
     const otp = createOtp();
 
-    await connection.beginTransaction();
+    const existing = await queryHelper.selectOne("user", { email: emailNormalized });
 
-    const [existing] = await connection.query(
-      `SELECT id_user, is_verified
-       FROM user
-       WHERE email = ?
-       LIMIT 1`,
-      [emailNormalized]
-    );
-
-    if (existing.length > 0 && Number(existing[0].is_verified) === 1) {
-      await connection.rollback();
-
+    if (existing && Number(existing.is_verified) === 1) {
       return res.status(409).json({
         message: "Email sudah terdaftar dan sudah diverifikasi."
       });
     }
 
-    if (existing.length > 0 && Number(existing[0].is_verified) === 0) {
-      await connection.query(
-        `UPDATE user
-         SET name = ?, password = ?, phone_number = ?, role = 'customer', is_verified = 0
-         WHERE id_user = ?`,
-        [cleanName, passwordHash, cleanPhone, existing[0].id_user]
+    if (existing && Number(existing.is_verified) === 0) {
+      await queryHelper.update(
+        "user",
+        {
+          name: cleanName,
+          password: passwordHash,
+          phone_number: cleanPhone,
+          role: "customer",
+          is_verified: false
+        },
+        { id_user: existing.id_user }
       );
     } else {
-      await connection.query(
-        `INSERT INTO user
-         (name, email, password, phone_number, role, is_verified)
-         VALUES (?, ?, ?, ?, 'customer', 0)`,
-        [cleanName, emailNormalized, passwordHash, cleanPhone]
-      );
+      await queryHelper.insert("user", {
+        name: cleanName,
+        email: emailNormalized,
+        password: passwordHash,
+        phone_number: cleanPhone,
+        role: "customer",
+        is_verified: false
+      });
     }
 
-    await saveOtp(connection, emailNormalized, "verify_email", otp);
-
-    await connection.commit();
+    await saveOtp(emailNormalized, "verify_email", otp);
 
     try {
       await sendVerificationOtp(emailNormalized, cleanName, otp);
@@ -318,18 +318,12 @@ export const register = async (req, res) => {
       }
     });
   } catch (error) {
-    try {
-      await connection.rollback();
-    } catch {}
-
     console.error("Register error:", error);
 
     return res.status(500).json({
       message: "Register gagal.",
       error: error.message
     });
-  } finally {
-    connection.release();
   }
 };
 
@@ -348,16 +342,15 @@ export const verifyEmail = async (req, res) => {
     const emailNormalized = normalizeEmail(email);
     const cleanOtp = otp.trim();
 
-    const [codes] = await pool.query(
-      `SELECT id_code, otp_hash, attempts, expires_at
-       FROM email_verification_codes
-       WHERE email = ?
-       AND purpose = 'verify_email'
-       AND consumed_at IS NULL
-       ORDER BY id_code DESC
-       LIMIT 1`,
-      [emailNormalized]
-    );
+    const codes = await queryHelper.select("email_verification_codes", {
+      where: {
+        email: emailNormalized,
+        purpose: "verify_email",
+        consumed_at: null
+      },
+      order: { column: "id_code", ascending: false },
+      limit: 1
+    });
 
     if (codes.length === 0) {
       return res.status(400).json({
@@ -368,11 +361,10 @@ export const verifyEmail = async (req, res) => {
     const code = codes[0];
 
     if (new Date(code.expires_at) < new Date()) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
+      await queryHelper.update(
+        "email_verification_codes",
+        { consumed_at: new Date().toISOString() },
+        { id_code: code.id_code }
       );
 
       return res.status(400).json({
@@ -381,11 +373,10 @@ export const verifyEmail = async (req, res) => {
     }
 
     if (Number(code.attempts) >= 5) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
+      await queryHelper.update(
+        "email_verification_codes",
+        { consumed_at: new Date().toISOString() },
+        { id_code: code.id_code }
       );
 
       return res.status(429).json({
@@ -397,11 +388,10 @@ export const verifyEmail = async (req, res) => {
     const isValidOtp = safeOtpCompare(incomingHash, code.otp_hash);
 
     if (!isValidOtp) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET attempts = attempts + 1
-         WHERE id_code = ?`,
-        [code.id_code]
+      await queryHelper.update(
+        "email_verification_codes",
+        { attempts: Number(code.attempts) + 1 },
+        { id_code: code.id_code }
       );
 
       return res.status(400).json({
@@ -409,27 +399,22 @@ export const verifyEmail = async (req, res) => {
       });
     }
 
-    await pool.query(
-      `UPDATE email_verification_codes
-       SET consumed_at = NOW()
-       WHERE id_code = ?`,
-      [code.id_code]
+    await queryHelper.update(
+      "email_verification_codes",
+      { consumed_at: new Date().toISOString() },
+      { id_code: code.id_code }
     );
 
-    await pool.query(
-      `UPDATE user
-       SET is_verified = 1
-       WHERE email = ? AND role = 'customer'`,
-      [emailNormalized]
+    await queryHelper.update(
+      "user",
+      { is_verified: true },
+      { email: emailNormalized, role: "customer" }
     );
 
-    const [users] = await pool.query(
-      `SELECT id_user, name, email, phone_number, role
-       FROM user
-       WHERE email = ? AND role = 'customer'
-       LIMIT 1`,
-      [emailNormalized]
-    );
+    const users = await queryHelper.select("user", {
+      where: { email: emailNormalized, role: "customer" },
+      limit: 1
+    });
 
     if (users.length === 0) {
       return res.status(404).json({
@@ -462,8 +447,6 @@ export const verifyEmail = async (req, res) => {
 };
 
 export const resendVerification = async (req, res) => {
-  let connection;
-
   try {
     const { email } = req.body;
 
@@ -473,13 +456,10 @@ export const resendVerification = async (req, res) => {
 
     const emailNormalized = normalizeEmail(email);
 
-    const [users] = await pool.query(
-      `SELECT id_user, name, email, is_verified
-       FROM user
-       WHERE email = ? AND role = 'customer'
-       LIMIT 1`,
-      [emailNormalized]
-    );
+    const users = await queryHelper.select("user", {
+      where: { email: emailNormalized, role: "customer" },
+      limit: 1
+    });
 
     if (users.length === 0) {
       return res.status(404).json({
@@ -495,12 +475,7 @@ export const resendVerification = async (req, res) => {
 
     const otp = createOtp();
 
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    await saveOtp(connection, emailNormalized, "verify_email", otp);
-
-    await connection.commit();
+    await saveOtp(emailNormalized, "verify_email", otp);
 
     try {
       await sendVerificationOtp(emailNormalized, users[0].name, otp);
@@ -524,26 +499,14 @@ export const resendVerification = async (req, res) => {
       }
     });
   } catch (error) {
-    if (connection) {
-      try {
-        await connection.rollback();
-      } catch {}
-    }
-
     return res.status(500).json({
       message: "Gagal mengirim ulang OTP.",
       error: error.message
     });
-  } finally {
-    if (connection) {
-      connection.release();
-    }
   }
 };
 
 export const login = async (req, res) => {
-  let connection;
-
   try {
     const { identifier, password } = req.body;
 
@@ -570,13 +533,10 @@ export const login = async (req, res) => {
     if (isNumeric) {
       const idCompanyProfile = parseInt(cleanIdentifier, 10);
 
-      const [mitraRows] = await pool.query(
-        `SELECT id_company_profile, company_name, email, password, phone_number, address
-         FROM company_profile
-         WHERE id_company_profile = ?
-         LIMIT 1`,
-        [idCompanyProfile]
-      );
+      const mitraRows = await queryHelper.select("company_profile", {
+        where: { id_company_profile: idCompanyProfile },
+        limit: 1
+      });
 
       if (mitraRows.length === 0) {
         return res.status(401).json({
@@ -607,13 +567,10 @@ export const login = async (req, res) => {
     } else {
       const emailNormalized = normalizeEmail(cleanIdentifier);
 
-      const [userRows] = await pool.query(
-        `SELECT id_user, name, email, password, phone_number, role, is_verified
-         FROM user
-         WHERE email = ?
-         LIMIT 1`,
-        [emailNormalized]
-      );
+      const userRows = await queryHelper.select("user", {
+        where: { email: emailNormalized },
+        limit: 1
+      });
 
       if (userRows.length === 0) {
         return res.status(401).json({
@@ -649,21 +606,11 @@ export const login = async (req, res) => {
       const newHash = await hashPassword(password);
 
       if (tableTarget === "user") {
-        await pool.query(
-          `UPDATE user
-           SET password = ?
-           WHERE id_user = ?`,
-          [newHash, targetId]
-        );
+        await queryHelper.update("user", { password: newHash }, { id_user: targetId });
       }
 
       if (tableTarget === "company_profile") {
-        await pool.query(
-          `UPDATE company_profile
-           SET password = ?
-           WHERE id_company_profile = ?`,
-          [newHash, targetId]
-        );
+        await queryHelper.update("company_profile", { password: newHash }, { id_company_profile: targetId });
       }
     }
 
@@ -687,14 +634,7 @@ export const login = async (req, res) => {
 
     const otp = createOtp();
 
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    await saveOtp(connection, user.email, "login_otp", otp);
-
-    await connection.commit();
-    connection.release();
-    connection = null;
+    await saveOtp(user.email, "login_otp", otp);
 
     try {
       await sendLoginOtp(user.email, user.nama, otp);
@@ -734,16 +674,6 @@ export const login = async (req, res) => {
       }
     });
   } catch (error) {
-    if (connection) {
-      try {
-        await connection.rollback();
-      } catch {}
-
-      try {
-        connection.release();
-      } catch {}
-    }
-
     console.error("Login error:", {
       message: error.message,
       code: error.code,
@@ -784,16 +714,15 @@ export const verifyLoginOtp = async (req, res) => {
       });
     }
 
-    const [codes] = await pool.query(
-      `SELECT id_code, otp_hash, attempts, expires_at
-       FROM email_verification_codes
-       WHERE email = ?
-       AND purpose = 'login_otp'
-       AND consumed_at IS NULL
-       ORDER BY id_code DESC
-       LIMIT 1`,
-      [emailNormalized]
-    );
+    const codes = await queryHelper.select("email_verification_codes", {
+      where: {
+        email: emailNormalized,
+        purpose: "login_otp",
+        consumed_at: null
+      },
+      order: { column: "id_code", ascending: false },
+      limit: 1
+    });
 
     if (codes.length === 0) {
       return res.status(400).json({
@@ -804,12 +733,7 @@ export const verifyLoginOtp = async (req, res) => {
     const code = codes[0];
 
     if (new Date(code.expires_at) < new Date()) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
       return res.status(400).json({
         message: "Kode OTP sudah expired. Silakan login ulang."
@@ -817,12 +741,7 @@ export const verifyLoginOtp = async (req, res) => {
     }
 
     if (Number(code.attempts) >= 5) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
       return res.status(429).json({
         message: "Percobaan OTP terlalu banyak. Silakan login ulang."
@@ -833,12 +752,7 @@ export const verifyLoginOtp = async (req, res) => {
     const isValidOtp = safeOtpCompare(incomingHash, code.otp_hash);
 
     if (!isValidOtp) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET attempts = attempts + 1
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { attempts: Number(code.attempts) + 1 }, { id_code: code.id_code });
 
       return res.status(400).json({
         message: "Kode OTP salah."
@@ -848,13 +762,10 @@ export const verifyLoginOtp = async (req, res) => {
     let user = null;
 
     if (userTypeNormalized === "mitra") {
-      const [mitraRows] = await pool.query(
-        `SELECT id_company_profile, company_name, email, phone_number, address
-         FROM company_profile
-         WHERE email = ?
-         LIMIT 1`,
-        [emailNormalized]
-      );
+      const mitraRows = await queryHelper.select("company_profile", {
+        where: { email: emailNormalized },
+        limit: 1
+      });
 
       if (mitraRows.length === 0) {
         return res.status(404).json({
@@ -873,14 +784,10 @@ export const verifyLoginOtp = async (req, res) => {
         alamat: mitra.address || ""
       };
     } else {
-      const [users] = await pool.query(
-        `SELECT id_user, name, email, phone_number, role
-         FROM user
-         WHERE email = ?
-         AND role = ?
-         LIMIT 1`,
-        [emailNormalized, userTypeNormalized]
-      );
+      const users = await queryHelper.select("user", {
+        where: { email: emailNormalized, role: userTypeNormalized },
+        limit: 1
+      });
 
       if (users.length === 0) {
         return res.status(404).json({
@@ -929,16 +836,19 @@ export const logout = async (req, res) => {
       });
     }
 
-    await pool.query(
-      `UPDATE session_login
-       SET status = 'inactive',
-           logout_time = NOW(),
-           last_activity = NOW()
-       WHERE id_login = ?
-       AND id_user = ?
-       AND user_type = ?
-       AND status = 'active'`,
-      [req.user.session_id, req.user.id, req.user.role]
+    await queryHelper.update(
+      "session_login",
+      {
+        status: "inactive",
+        logout_time: new Date().toISOString(),
+        last_activity: new Date().toISOString()
+      },
+      {
+        id_login: req.user.session_id,
+        id_user: req.user.id,
+        user_type: req.user.role,
+        status: "active"
+      }
     );
 
     return res.json({
@@ -953,8 +863,6 @@ export const logout = async (req, res) => {
 };
 
 export const forgotPassword = async (req, res) => {
-  let connection;
-
   try {
     const { email, user_type } = req.body;
 
@@ -976,13 +884,10 @@ export const forgotPassword = async (req, res) => {
     let account = null;
 
     if (userTypeNormalized === "customer") {
-      const [users] = await pool.query(
-        `SELECT id_user, name, email
-         FROM user
-         WHERE email = ? AND role = 'customer'
-         LIMIT 1`,
-        [emailNormalized]
-      );
+      const users = await queryHelper.select("user", {
+        where: { email: emailNormalized, role: "customer" },
+        limit: 1
+      });
 
       if (users.length === 0) {
         return res.status(404).json({
@@ -997,13 +902,10 @@ export const forgotPassword = async (req, res) => {
     }
 
     if (userTypeNormalized === "mitra") {
-      const [mitraRows] = await pool.query(
-        `SELECT id_company_profile, company_name, email
-         FROM company_profile
-         WHERE email = ?
-         LIMIT 1`,
-        [emailNormalized]
-      );
+      const mitraRows = await queryHelper.select("company_profile", {
+        where: { email: emailNormalized },
+        limit: 1
+      });
 
       if (mitraRows.length === 0) {
         return res.status(404).json({
@@ -1125,12 +1027,7 @@ export const resetPasswordWithOtp = async (req, res) => {
     const code = codes[0];
 
     if (new Date(code.expires_at) < new Date()) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
       return res.status(400).json({
         message: "Kode OTP sudah expired. Silakan minta kode baru."
@@ -1138,12 +1035,7 @@ export const resetPasswordWithOtp = async (req, res) => {
     }
 
     if (Number(code.attempts) >= 5) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
       return res.status(429).json({
         message: "Percobaan OTP terlalu banyak. Silakan minta kode baru."
@@ -1154,12 +1046,7 @@ export const resetPasswordWithOtp = async (req, res) => {
     const isValidOtp = safeOtpCompare(incomingHash, code.otp_hash);
 
     if (!isValidOtp) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET attempts = attempts + 1
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { attempts: Number(code.attempts) + 1 }, { id_code: code.id_code });
 
       return res.status(400).json({
         message: "Kode OTP salah."
@@ -1435,12 +1322,7 @@ export const confirmChangePassword = async (req, res) => {
     const code = codes[0];
 
     if (new Date(code.expires_at) < new Date()) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
       return res.status(400).json({
         message: "Kode OTP sudah expired. Silakan ulangi proses ganti password."
@@ -1448,12 +1330,7 @@ export const confirmChangePassword = async (req, res) => {
     }
 
     if (Number(code.attempts) >= 5) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
       return res.status(429).json({
         message: "Percobaan OTP terlalu banyak. Silakan ulangi proses ganti password."
@@ -1464,12 +1341,7 @@ export const confirmChangePassword = async (req, res) => {
     const isValidOtp = safeOtpCompare(incomingHash, code.otp_hash);
 
     if (!isValidOtp) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET attempts = attempts + 1
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { attempts: Number(code.attempts) + 1 }, { id_code: code.id_code });
 
       return res.status(400).json({
         message: "Kode OTP salah."
@@ -1556,12 +1428,7 @@ export const verifyResetPasswordOtp = async (req, res) => {
     const code = codes[0];
 
     if (new Date(code.expires_at) < new Date()) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
       return res.status(400).json({
         message: "Kode OTP sudah expired. Silakan minta kode baru."
@@ -1569,12 +1436,7 @@ export const verifyResetPasswordOtp = async (req, res) => {
     }
 
     if (Number(code.attempts) >= 5) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET consumed_at = NOW()
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
       return res.status(429).json({
         message: "Percobaan OTP terlalu banyak. Silakan minta kode baru."
@@ -1585,12 +1447,7 @@ export const verifyResetPasswordOtp = async (req, res) => {
     const isValidOtp = safeOtpCompare(incomingHash, code.otp_hash);
 
     if (!isValidOtp) {
-      await pool.query(
-        `UPDATE email_verification_codes
-         SET attempts = attempts + 1
-         WHERE id_code = ?`,
-        [code.id_code]
-      );
+      await queryHelper.update("email_verification_codes", { attempts: Number(code.attempts) + 1 }, { id_code: code.id_code });
 
       return res.status(400).json({
         message: "Kode OTP salah."
