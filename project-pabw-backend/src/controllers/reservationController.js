@@ -370,15 +370,16 @@ export const createReservation = async (req, res) => {
     let resolvedListKamarId = id_list_kamar ? parseInt(id_list_kamar) : null;
 
     if (!resolvedListKamarId && id_list_hotel && id_detail_kamar) {
-      const { data: availableRooms, error } = await supabase
-        .from("list_kamar")
-        .select("id_list_kamar")
-        .eq("id_list_hotel", parseInt(id_list_hotel))
-        .eq("id_detail_kamar", parseInt(id_detail_kamar))
-        .eq("status", "available")
-        .limit(parseInt(jumlah_kamar));
+      const availableRooms = await select("list_kamar", {
+        where: {
+          id_list_hotel: parseInt(id_list_hotel),
+          id_detail_kamar: parseInt(id_detail_kamar),
+          status: "available"
+        },
+        limit: parseInt(jumlah_kamar)
+      });
 
-      if (error || !availableRooms || availableRooms.length === 0) {
+      if (!availableRooms || availableRooms.length === 0) {
         return res.status(404).json({ message: "Kamar tidak ditemukan atau tidak tersedia." });
       }
 
