@@ -366,28 +366,54 @@ export const createReservation = async (req, res) => {
       });
     }
 
+    // Resolve id_list_kamar jika tidak dikirim langsung
+    let resolvedListKamarId = id_list_kamar ? parseInt(id_list_kamar) : null;
+
+    if (!resolvedListKamarId && id_list_hotel && id_detail_kamar) {
+      const { data: availableRooms, error } = await supabase
+        .from("list_kamar")
+        .select("id_list_kamar")
+        .eq("id_list_hotel", parseInt(id_list_hotel))
+        .eq("id_detail_kamar", parseInt(id_detail_kamar))
+        .eq("status", "available")
+        .limit(parseInt(jumlah_kamar));
+
+      if (error || !availableRooms || availableRooms.length === 0) {
+        return res.status(404).json({ message: "Kamar tidak ditemukan atau tidak tersedia." });
+      }
+
+      if (availableRooms.length < parseInt(jumlah_kamar)) {
+        return res.status(400).json({
+          message: `Hanya tersedia ${availableRooms.length} kamar, diminta ${jumlah_kamar}.`
+        });
+      }
+
+      resolvedListKamarId = availableRooms[0].id_list_kamar;
+    }
+
+    if (!resolvedListKamarId) {
+      return res.status(400).json({ message: "Room identifier tidak valid." });
+    }
+
     const result = await callRpc("create_reservation", {
       p_id_user: parseInt(id_user),
       p_id_list_hotel: id_list_hotel ? parseInt(id_list_hotel) : null,
       p_id_detail_kamar: id_detail_kamar ? parseInt(id_detail_kamar) : null,
-      p_id_list_kamar: id_list_kamar ? parseInt(id_list_kamar) : null,
+      p_id_list_kamar: resolvedListKamarId,
       p_jumlah_kamar: parseInt(jumlah_kamar),
       p_checkin_time: new Date(checkin_time).toISOString(),
       p_checkout_time: new Date(checkout_time).toISOString()
     });
 
-    // RPC return JSON langsung, bukan array of rows
-    // result bisa berupa array [{create_reservation: {...}}] atau object langsung
     let response;
     if (Array.isArray(result)) {
-      // Supabase kadang wrap dalam array dengan key nama fungsinya
       response = result[0]?.create_reservation || result[0];
     } else {
       response = result;
     }
 
     if (!response) {
-      return res.status(500).json({ message: "Gagal membuat reservasi" });
+      return res.status(500).json({ message: "Gagal membuat reservasi." });
     }
 
     if (!response.success) {
@@ -403,12 +429,12 @@ export const createReservation = async (req, res) => {
         id_history: response.id_history,
         total: response.total,
         days: response.days,
-        status: 'confirmed'
+        status: "confirmed"
       }
     });
 
   } catch (error) {
-    console.error("Error:", error.message);
+    console.error("Error createReservation:", error.message);
     res.status(500).json({ error: error.message });
   }
 };
