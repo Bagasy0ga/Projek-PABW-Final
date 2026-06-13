@@ -359,7 +359,7 @@ function handleSubmit() {
       roomRate: summary.roomRate,
       subtotal: summary.subtotal,
       discountAmount: summary.discountAmount,
-      total: reservationData.total_amount || reservationData.amount || summary.total,
+      total: reservationData.total || reservationData.total_amount || reservationData.amount || summary.total,
       bookingDate: new Date().toISOString(),
       status: reservationData.status || 'confirmed'
     })
@@ -369,7 +369,18 @@ function handleSubmit() {
 
   apiPost('/reservations/book', buildReservationPayload())
     .then(response => {
-      saveLocalBooking(response?.data || {})
+      // Handle berbagai format response
+      const data = response?.data || response || {}
+
+      // Cek kalau backend return { success: false }
+      if (data.success === false) {
+        alert(data.message || 'Pemesanan gagal.')
+        return
+      }
+
+      saveLocalBooking(data)
+      store.closeBookingModal()
+      store.openConfirmationModal()
     })
     .catch(error => {
       alert(error.message || 'Pemesanan gagal diproses ke backend.')
