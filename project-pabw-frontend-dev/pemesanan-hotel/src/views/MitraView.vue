@@ -1473,9 +1473,17 @@ function formatCurrency(n) {
   background: var(--adm-white);
   border-radius: 14px;
   border: 1px solid var(--adm-border);
-  overflow: hidden;
+  overflow: visible; /* ← ganti ini */
   box-shadow: var(--adm-shadow);
 }
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 14px; /* pindah border-radius ke sini */
+}
+
 .table-card-header {
   padding: 1rem 1.2rem;
   border-bottom: 1px solid var(--adm-border);
