@@ -17,6 +17,17 @@ const normalizeText = (value) => {
   return String(value || "").toLowerCase().trim();
 };
 
+/**
+ * Parses a numeric value from various human-friendly formats:
+ * - 1500000          -> 1500000
+ * - "1.500.000"      -> 1500000
+ * - "1,500,000"      -> 1500000
+ * - "1,5 juta"       -> 1500000
+ * - "1.5jt"          -> 1500000
+ * - "1,5 ribu"       -> 1500
+ * - "500rb"          -> 500000
+ * - "Rp 1.5 juta"    -> 1500000
+ */
 const parseNumber = (value) => {
   if (value === undefined || value === null || value === "") return null;
 
@@ -24,33 +35,93 @@ const parseNumber = (value) => {
     return Number.isNaN(value) ? null : value;
   }
 
-  const cleaned = String(value)
-    .toLowerCase()
-    .replace(/rp/g, "")
-    .replace(/\./g, "")
-    .replace(/,/g, "")
-    .replace(/\s+/g, "")
-    .trim();
+  let text = String(value).toLowerCase().trim().replace(/rp/g, "").trim();
+  text = text.replace(/\s+/g, " ").trim();
 
-  const jutaMatch = cleaned.match(/^(\d+)(juta|jt)$/);
+  // "500k" style -> thousand
+  const kMatch = text.match(/^(\d+)\s*k$/);
+  if (kMatch) {
+    return Number(kMatch[1]) * 1000;
+  }
 
+  // "1.5 juta" / "1.5 juta" / "1,5 juta" / "1.5 juta-an" / "sejutaan"
+  const jutaDecimalMatch = text.match(/^(\d+)[.,](\d+)\s*(juta|jt)(-an|an)?$/);
+  if (jutaDecimalMatch) {
+    const intPart = jutaDecimalMatch[1];
+    const decPart = jutaDecimalMatch[2];
+    return Number(`${intPart}.${decPart}`) * 1000000;
+  }
+
+  // "2 juta" / "2jt" / "2 juta-an" / "2jt-an"
+  const jutaMatch = text.match(/^(\d+)\s*(juta|jt)(-an|an)?$/);
   if (jutaMatch) {
     return Number(jutaMatch[1]) * 1000000;
   }
 
-  const ribuMatch = cleaned.match(/^(\d+)(ribu|rb)$/);
+  // bare "sejuta" / "sejutaan"
+  if (/^sejuta(-an|an)?$/.test(text)) {
+    return 1000000;
+  }
 
+  // "1,5 ribu" / "1.5rb"
+  const ribuDecimalMatch = text.match(/^(\d+)[.,](\d+)\s*(ribu|rb)$/);
+  if (ribuDecimalMatch) {
+    const intPart = ribuDecimalMatch[1];
+    const decPart = ribuDecimalMatch[2];
+    return Number(`${intPart}.${decPart}`) * 1000;
+  }
+
+  // "500 ribu" / "500rb"
+  const ribuMatch = text.match(/^(\d+)\s*(ribu|rb)$/);
   if (ribuMatch) {
     return Number(ribuMatch[1]) * 1000;
   }
 
-  const parsed = Number(cleaned);
+  const cleaned = text.replace(/\s+/g, "");
 
-  if (Number.isNaN(parsed)) {
-    return null;
+  // "1.500.000" style (dot as thousand separator)
+  if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) {
+    return Number(cleaned.replace(/\./g, ""));
   }
 
-  return parsed;
+  // "1,500,000" style (comma as thousand separator)
+  if (/^\d{1,3}(,\d{3})+$/.test(cleaned)) {
+    return Number(cleaned.replace(/,/g, ""));
+  }
+
+  // "1.500.000,50" or "1,500,000.50" - has both separators, last one is decimal
+  if (/^\d+([.,]\d{3})*[.,]\d+$/.test(cleaned) && (cleaned.includes(".") || cleaned.includes(","))) {
+    const lastDot = cleaned.lastIndexOf(".");
+    const lastComma = cleaned.lastIndexOf(",");
+    const decimalSeparatorIndex = Math.max(lastDot, lastComma);
+
+    if (decimalSeparatorIndex > -1) {
+      const integerPart = cleaned.slice(0, decimalSeparatorIndex).replace(/[.,]/g, "");
+      const decimalPart = cleaned.slice(decimalSeparatorIndex + 1);
+      const parsed = Number(`${integerPart}.${decimalPart}`);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+  }
+
+  // Plain integer/decimal, strip any stray separators conservatively
+  const finalCleaned = cleaned.replace(/[^\d.,]/g, "");
+
+  // If still has both . and , just remove all separators (assume thousand grouping)
+  if (finalCleaned.includes(".") && finalCleaned.includes(",")) {
+    const parsed = Number(finalCleaned.replace(/[.,]/g, ""));
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  // Single separator with exactly 3 digits after -> treat as thousand separator
+  const singleSepMatch = finalCleaned.match(/^(\d+)[.,](\d{3})$/);
+  if (singleSepMatch) {
+    return Number(singleSepMatch[1] + singleSepMatch[2]);
+  }
+
+  // Otherwise treat separator as decimal point
+  const parsed = Number(finalCleaned.replace(",", "."));
+
+  return Number.isNaN(parsed) ? null : parsed;
 };
 
 const LOCATION_GROUPS = {
@@ -144,6 +215,15 @@ const LOCATION_GROUPS = {
 };
 
 const LOCATION_ALIASES = {
+  "jkt": "jawa",
+  "jakrta": "jawa",
+  "bdg": "jawa",
+  "sby": "jawa",
+  "sub": "jawa",
+  "jogja": "jawa",
+  "jogjakarta": "jawa",
+  "bpp": "kalimantan",
+
   "pulau jawa": "jawa",
   "jawa barat": "jawa",
   "jawa tengah": "jawa",
@@ -259,45 +339,121 @@ const addLocationFilter = (whereClauses, params, location) => {
   });
 };
 
+/**
+ * Extracts a budget value from free text. Supports many phrasings:
+ * - "budget maksimal 1,5 juta"
+ * - "harga termurah"
+ * - "maksimal 500 ribu"
+ * - "di bawah 2jt"
+ * - "1.5 juta rupiah"
+ * - bare "Rp 1.500.000"
+ */
 const extractBudgetFromPrompt = (prompt) => {
   const text = normalizeText(prompt);
 
-  const jutaMatch = text.match(/(?:maksimal|max|budget|harga|di bawah|kurang dari)\s*(?:rp\s*)?(\d+)\s*(juta|jt)/);
-
-  if (jutaMatch) {
-    return Number(jutaMatch[1]) * 1000000;
+  // Number followed by juta/jt/ribu/rb, optionally preceded by keyword,
+  // allow decimal with either . or ,
+  const moneyWithUnitRegex = /(?:maksimal|max|budget|harga|di bawah|kurang dari|sekitar|sampai|hingga)?\s*(?:rp\.?\s*)?(\d+(?:[.,]\d+)?)\s*(juta|jt|ribu|rb|k)(?:-?an)?\b/;
+  const unitMatch = text.match(moneyWithUnitRegex);
+  if (unitMatch) {
+    const numPart = unitMatch[1].replace(",", ".");
+    const unit = unitMatch[2];
+    const base = Number(numPart);
+    if (!Number.isNaN(base)) {
+      if (unit === "juta" || unit === "jt") return base * 1000000;
+      if (unit === "ribu" || unit === "rb" || unit === "k") return base * 1000;
+    }
   }
 
-  const ribuMatch = text.match(/(?:maksimal|max|budget|harga|di bawah|kurang dari)\s*(?:rp\s*)?(\d+)\s*(ribu|rb)/);
-
-  if (ribuMatch) {
-    return Number(ribuMatch[1]) * 1000;
+  // "sejuta" / "sejutaan"
+  if (/sejuta(-?an)?\b/.test(text)) {
+    return 1000000;
   }
 
-  const numberMatch = text.match(/(?:maksimal|max|budget|harga|di bawah|kurang dari)\s*(?:rp\s*)?([\d.]+)/);
+  // Range "500rb-1jt" / "500rb sampai 1 juta" -> take the larger value
+  const rangeRegex = /(\d+(?:[.,]\d+)?)\s*(juta|jt|ribu|rb|k)\s*(?:-|sampai|hingga|s\.?d\.?)\s*(\d+(?:[.,]\d+)?)\s*(juta|jt|ribu|rb|k)/;
+  const rangeMatch = text.match(rangeRegex);
+  if (rangeMatch) {
+    const toAmount = (numStr, unit) => {
+      const n = Number(numStr.replace(",", "."));
+      if (unit === "juta" || unit === "jt") return n * 1000000;
+      if (unit === "ribu" || unit === "rb" || unit === "k") return n * 1000;
+      return n;
+    };
+    const first = toAmount(rangeMatch[1], rangeMatch[2]);
+    const second = toAmount(rangeMatch[3], rangeMatch[4]);
+    return Math.max(first, second);
+  }
 
+  // Plain number with explicit budget keyword, e.g. "budget 1500000" or "maksimal Rp 1.500.000"
+  const numberWithKeywordRegex = /(?:maksimal|max|budget|harga|di bawah|kurang dari|sekitar|sampai|hingga)\s*(?:rp\.?\s*)?([\d.,]+)/;
+  const numberMatch = text.match(numberWithKeywordRegex);
   if (numberMatch) {
-    return parseNumber(numberMatch[1]);
+    const parsed = parseNumber(numberMatch[1]);
+    if (parsed !== null) return parsed;
+  }
+
+  // Bare "Rp X" anywhere in the text
+  const bareRpRegex = /rp\.?\s*([\d.,]+)\s*(juta|jt|ribu|rb)?/;
+  const bareMatch = text.match(bareRpRegex);
+  if (bareMatch) {
+    const numPart = bareMatch[1];
+    const unit = bareMatch[2];
+    if (unit) {
+      const base = Number(numPart.replace(",", "."));
+      if (!Number.isNaN(base)) {
+        if (unit === "juta" || unit === "jt") return base * 1000000;
+        if (unit === "ribu" || unit === "rb") return base * 1000;
+      }
+    } else {
+      const parsed = parseNumber(numPart);
+      if (parsed !== null) return parsed;
+    }
   }
 
   return null;
 };
 
+/**
+ * Extracts guest count from phrasing like:
+ * - "untuk 4 orang"
+ * - "4 tamu"
+ * - "2 pax"
+ * - "untuk keluarga" -> 4
+ * - "berdua" / "untuk 2 orang dewasa"
+ */
 const extractGuestCountFromPrompt = (prompt) => {
   const text = normalizeText(prompt);
 
-  const guestMatch = text.match(/(\d+)\s*(orang|tamu|pax|dewasa)/);
+  const guestMatch = text.match(/(\d+)\s*(orang|tamu|pax|dewasa|org)\b/);
 
   if (guestMatch) {
     return Number(guestMatch[1]);
+  }
+
+  // "ber4" / "ber-4" / "ber 4"
+  const berMatch = text.match(/ber-?\s?(\d+)\b/);
+  if (berMatch) {
+    return Number(berMatch[1]);
+  }
+
+  // "untuk 4" without unit word, but near "orang"/"tamu" elsewhere is already covered above.
+  // Handle "kapasitas 4"
+  const capacityMatch = text.match(/kapasitas\s*(\d+)/);
+  if (capacityMatch) {
+    return Number(capacityMatch[1]);
   }
 
   if (text.includes("keluarga")) {
     return 4;
   }
 
-  if (text.includes("pasangan") || text.includes("berdua")) {
+  if (text.includes("pasangan") || text.includes("berdua") || text.includes("honeymoon") || text.includes("bulan madu")) {
     return 2;
+  }
+
+  if (text.includes("sendiri") || text.includes("solo")) {
+    return 1;
   }
 
   return null;
@@ -306,9 +462,11 @@ const extractGuestCountFromPrompt = (prompt) => {
 const extractLocationFromPrompt = (prompt) => {
   const text = normalizeText(prompt);
 
-  const aliasMatch = Object.keys(LOCATION_ALIASES).find((alias) => {
-    return text.includes(alias);
-  });
+  const aliasMatch = Object.keys(LOCATION_ALIASES)
+    .sort((a, b) => b.length - a.length)
+    .find((alias) => {
+      return text.includes(alias);
+    });
 
   if (aliasMatch) {
     return aliasMatch;
@@ -316,9 +474,11 @@ const extractLocationFromPrompt = (prompt) => {
 
   const allKeywords = Object.values(LOCATION_GROUPS).flat();
 
-  const cityMatch = allKeywords.find((keyword) => {
-    return text.includes(keyword);
-  });
+  const cityMatch = allKeywords
+    .sort((a, b) => b.length - a.length)
+    .find((keyword) => {
+      return text.includes(keyword);
+    });
 
   return cityMatch || null;
 };
@@ -335,12 +495,46 @@ const extractPurposeFromPrompt = (prompt) => {
   const text = normalizeText(prompt);
 
   if (text.includes("keluarga")) return "keluarga";
-  if (text.includes("bisnis") || text.includes("kerja")) return "bisnis";
-  if (text.includes("liburan") || text.includes("wisata")) return "liburan";
+  if (text.includes("bisnis") || text.includes("kerja") || text.includes("dinas")) return "bisnis";
+  if (text.includes("liburan") || text.includes("wisata") || text.includes("vacation")) return "liburan";
   if (text.includes("honeymoon") || text.includes("bulan madu")) return "honeymoon";
-  if (text.includes("transit")) return "transit";
+  if (text.includes("transit") || text.includes("singgah")) return "transit";
 
   return null;
+};
+
+/**
+ * Detects if the user is asking for the cheapest / most affordable option,
+ * even if no explicit numeric budget is given (e.g. "harga termurah",
+ * "yang paling murah", "budget tipis").
+ */
+const isCheapestRequest = (prompt) => {
+  const text = normalizeText(prompt);
+  return (
+    text.includes("termurah") ||
+    text.includes("paling murah") ||
+    text.includes("murah") ||
+    text.includes("hemat") ||
+    text.includes("ekonomis") ||
+    text.includes("budget tipis") ||
+    text.includes("low budget")
+  );
+};
+
+/**
+ * Detects if the user wants the best-rated / top-quality option,
+ * even without explicit rating numbers (e.g. "rating terbaik", "paling bagus").
+ */
+const isBestRatedRequest = (prompt) => {
+  const text = normalizeText(prompt);
+  return (
+    text.includes("rating terbaik") ||
+    text.includes("rating tertinggi") ||
+    text.includes("paling bagus") ||
+    text.includes("terbaik") ||
+    text.includes("paling recommended") ||
+    text.includes("favorit")
+  );
 };
 
 const extractPreferencesLocally = (prompt) => {
@@ -349,7 +543,9 @@ const extractPreferencesLocally = (prompt) => {
     budget_max: extractBudgetFromPrompt(prompt),
     guest_count: extractGuestCountFromPrompt(prompt),
     preferred_facilities: extractFacilitiesFromPrompt(prompt),
-    purpose: extractPurposeFromPrompt(prompt)
+    purpose: extractPurposeFromPrompt(prompt),
+    prefer_cheapest: isCheapestRequest(prompt),
+    prefer_best_rated: isBestRatedRequest(prompt)
   };
 };
 
@@ -553,6 +749,16 @@ const calculateHotelScore = (hotel, preferences) => {
     score += Math.min(Number(hotel.available_room_count), 10);
   }
 
+  // Boost for explicit "cheapest" intent
+  if (preferences.prefer_cheapest) {
+    score += Math.max(0, 30 - hotel.min_price / 50000);
+  }
+
+  // Boost for explicit "best rated" intent
+  if (preferences.prefer_best_rated && hotel.avg_rating > 0) {
+    score += Number(hotel.avg_rating) * 5;
+  }
+
   return {
     score: Math.round(score),
     matched_facilities: matchedFacilities
@@ -655,13 +861,139 @@ const normalizeLlmRecommendation = (llmRecommendation, rankedCandidates) => {
   };
 };
 
+/**
+ * Combines LLM-extracted preferences with locally-extracted preferences.
+ * For each field, prefer the LLM value if it's present/non-null/non-empty;
+ * otherwise fall back to the local extraction. This way, even if the LLM
+ * misses or misparses something (e.g. "1,5 juta" -> 1), the local regex
+ * extraction can still fill in the gap.
+ *
+ * For budget_max specifically, if the LLM value looks suspiciously small
+ * (e.g. < 1000, which is implausible for a hotel price in IDR) but the
+ * local extraction found a larger, more plausible value, prefer the local one.
+ */
+const mergePreferences = (llmPrefs, localPrefs, prompt) => {
+  const merged = { ...localPrefs, ...llmPrefs };
+
+  // location
+  if (!merged.location || normalizeText(merged.location) === "") {
+    merged.location = localPrefs.location;
+  }
+
+  // budget_max sanity check
+  const llmBudget = parseNumber(llmPrefs?.budget_max);
+  const localBudget = parseNumber(localPrefs?.budget_max);
+
+  if (llmBudget === null || llmBudget === undefined) {
+    merged.budget_max = localBudget;
+  } else if (llmBudget < 1000 && localBudget && localBudget >= 1000) {
+    // LLM likely misparsed "1,5 juta" as 1 -> prefer local extraction
+    merged.budget_max = localBudget;
+  } else {
+    merged.budget_max = llmBudget;
+  }
+
+  // guest_count
+  const llmGuests = parseNumber(llmPrefs?.guest_count);
+  const localGuests = parseNumber(localPrefs?.guest_count);
+  merged.guest_count = llmGuests || localGuests || null;
+
+  // preferred_facilities: union of both
+  const llmFacilities = Array.isArray(llmPrefs?.preferred_facilities) ? llmPrefs.preferred_facilities : [];
+  const localFacilities = Array.isArray(localPrefs?.preferred_facilities) ? localPrefs.preferred_facilities : [];
+  merged.preferred_facilities = [...new Set([...llmFacilities, ...localFacilities])];
+
+  // purpose
+  if (!merged.purpose) {
+    merged.purpose = localPrefs.purpose;
+  }
+
+  // cheapest / best-rated intent (always derive locally, LLM may not return these)
+  merged.prefer_cheapest = isCheapestRequest(prompt);
+  merged.prefer_best_rated = isBestRatedRequest(prompt);
+
+  return merged;
+};
+
 const extractPreferencesFromPrompt = async (prompt) => {
+  const localPrefs = extractPreferencesLocally(prompt);
+
   const systemPrompt = `
-Kamu adalah parser preferensi hotel.
-Tugasmu hanya mengekstrak preferensi customer dari teks bebas.
-Jawaban wajib JSON valid.
-Jangan gunakan markdown.
+Kamu adalah parser preferensi hotel yang sangat teliti dan fleksibel.
+Tugasmu hanya mengekstrak preferensi customer dari teks bebas berbahasa Indonesia.
+Jawaban wajib JSON valid, tanpa markdown, tanpa penjelasan tambahan.
 Jika data tidak disebutkan, isi null atau array kosong.
+
+CATATAN UMUM:
+- Manusia menulis dengan gaya bebas: typo, singkatan, huruf kapital acak,
+  bahasa gaul/informal, campur bahasa Indonesia-Inggris, tanpa tanda baca,
+  atau bertele-tele. Tetap ekstrak maksud sebenarnya, jangan terpaku pada
+  ejaan/format literal.
+- Abaikan kata sapaan, basa-basi, atau emoji yang tidak relevan
+  (contoh: "halo", "min", "tolong dong", "ya", "kak", "gan", "please", emoji apapun).
+- Satu prompt bisa berisi beberapa preferensi sekaligus dalam urutan apapun;
+  ekstrak semuanya.
+- Jika ada informasi yang kontradiktif atau berubah pikiran dalam satu prompt
+  (misal "ke Bali deh, eh atau Lombok aja"), ambil preferensi YANG TERAKHIR
+  disebutkan/diputuskan.
+
+ATURAN UNTUK location:
+- Terima nama kota/daerah meski disingkat atau typo ringan, contoh:
+  "jkt"/"jakrta" -> jakarta, "bdg" -> bandung, "sby"/"sub" -> surabaya,
+  "yog"/"jogja"/"jogjakarta" -> yogyakarta, "bpp"/"balikpapan" -> balikpapan.
+- Terima juga nama pulau, provinsi, atau kawasan wisata sebagai lokasi
+  (misal "deket pantai", "daerah pegunungan" tidak dianggap lokasi spesifik,
+  tapi "pantai kuta" / "ubud" / "raja ampat" dianggap lokasi spesifik).
+- Jika user menyebut "di sekitar sini" atau "terdekat" tanpa nama tempat,
+  set location ke null (karena lokasi user tidak diketahui dari teks).
+
+ATURAN UNTUK budget_max:
+- Konversi semua nilai uang ke satuan Rupiah penuh (integer), BUKAN dalam satuan juta/ribu.
+- Contoh: "1,5 juta" -> 1500000 (BUKAN 1 atau 1.5)
+- Contoh: "500 ribu" / "500rb" / "500k" -> 500000
+- Contoh: "2jt" / "2 jeti" / "2 juta-an" -> 2000000
+- Contoh: "budget 1.500.000" -> 1500000
+- Terima juga gaya santai: "duit cuma ada 300rb", "kantong 1jt aja",
+  "ga lebih dari sejuta" -> 1000000, "sejutaan" -> 1000000.
+- Jika ada RENTANG harga (misal "antara 500rb sampai 1 juta" atau
+  "500rb-1jt"), gunakan angka TERBESAR dari rentang tersebut sebagai budget_max.
+- Jika user bilang "termurah"/"murah"/"hemat"/"ngepas"/"budget minim"
+  tanpa angka spesifik, set budget_max ke null.
+- Jika user menyebut harga PER MALAM vs TOTAL untuk beberapa malam
+  (misal "budget 3 juta untuk 3 malam"), bagi totalnya menjadi per malam
+  (3000000 / 3 = 1000000) karena harga kamar di database adalah per malam.
+
+ATURAN UNTUK guest_count:
+- Ambil jumlah orang/tamu secara eksplisit jika disebutkan, misal
+  "untuk 4 orang", "4 org", "ber4", "ber-4", "rombongan 6 orang" -> sesuai angka.
+- "sendirian"/"sendiri"/"solo traveling"/"cuma aku" -> 1.
+- "pasangan"/"berdua"/"honeymoon"/"bulan madu"/"aku & pacar" -> 2.
+- "keluarga" tanpa angka -> 4. Tapi jika user menyebut jumlah anggota keluarga
+  secara spesifik (misal "keluarga kecil isi 3 orang"), gunakan angka tersebut.
+- "rombongan"/"grup"/"teman-teman" tanpa angka -> null (tidak bisa ditebak pasti).
+
+ATURAN UNTUK preferred_facilities:
+- Normalisasi sinonim ke bentuk standar, contoh:
+  "ada kolam renangnya gak" -> "kolam renang",
+  "wifi kencang"/"internet"/"ada wifi" -> "wifi",
+  "ada tempat parkir" -> "parkir",
+  "sarapan included"/"include breakfast"/"ada makan pagi" -> "sarapan",
+  "ber-AC"/"dingin"/"ada pendingin ruangan" -> "ac".
+- Jika user menyebut fasilitas yang TIDAK diinginkan (misal "gapapa ga ada kolam
+  renang"), JANGAN masukkan fasilitas tersebut ke preferred_facilities.
+
+ATURAN UNTUK purpose:
+- "mau healing"/"refreshing"/"liburan"/"jalan-jalan" -> "liburan".
+- "ada meeting"/"rapat"/"dinas kantor"/"kerjaan" -> "bisnis".
+- "honeymoon"/"bulan madu"/"anniversary" -> "honeymoon".
+- "cuma numpang tidur"/"transit sebelum lanjut perjalanan"/"mau ke bandara
+  besok pagi" -> "transit".
+- "sama keluarga"/"bawa anak"/"liburan keluarga" -> "keluarga".
+
+JIKA PROMPT TIDAK JELAS / TIDAK BERHUBUNGAN DENGAN HOTEL:
+- Jika teks sama sekali tidak mengandung preferensi terkait hotel
+  (lokasi/budget/jumlah tamu/fasilitas/tujuan), kembalikan semua field
+  sebagai null/array kosong. Jangan mengarang preferensi yang tidak ada.
 `;
 
   const userPrompt = `
@@ -669,15 +1001,17 @@ Ekstrak preferensi hotel dari teks berikut:
 
 "${prompt}"
 
-Format output wajib:
+Format output wajib (JSON):
 {
   "location": string atau null,
-  "budget_max": number atau null,
+  "budget_max": number (dalam Rupiah penuh) atau null,
   "guest_count": number atau null,
   "preferred_facilities": array of string,
   "purpose": string atau null
 }
 `;
+
+  let llmPrefs = {};
 
   try {
     const content = await askLlmContent({
@@ -687,10 +1021,12 @@ Format output wajib:
       timeoutMs: 30000
     });
 
-    return extractJsonFromText(content);
+    llmPrefs = extractJsonFromText(content);
   } catch {
-    return extractPreferencesLocally(prompt);
+    llmPrefs = {};
   }
+
+  return mergePreferences(llmPrefs, localPrefs, prompt);
 };
 
 export const recommendHotelForCustomer = async (req, res) => {
@@ -712,6 +1048,8 @@ export const recommendHotelForCustomer = async (req, res) => {
       guest_count,
       preferred_facilities = [],
       purpose,
+      prefer_cheapest = false,
+      prefer_best_rated = false,
       limit = 30
     } = requestData;
 
@@ -720,7 +1058,16 @@ export const recommendHotelForCustomer = async (req, res) => {
     const inferredGuestCount = parseNumber(guest_count) || (purposeText === "keluarga" ? 4 : null);
     const limitValue = Math.min(parseNumber(limit) || 30, 50);
 
-    if (!location && !budgetMax && !inferredGuestCount && preferred_facilities.length === 0 && !purpose) {
+    const hasAnyPreference =
+      location ||
+      budgetMax ||
+      inferredGuestCount ||
+      preferred_facilities.length > 0 ||
+      purpose ||
+      prefer_cheapest ||
+      prefer_best_rated;
+
+    if (!hasAnyPreference) {
       return res.status(400).json({
         message: "Tolong beritahu kami preferensi Anda seperti lokasi, budget, jumlah tamu, fasilitas yang diinginkan, atau tujuan perjalanan. Kami butuh setidaknya satu informasi untuk merekomendasikan hotel yang sesuai! 😊"
       });
@@ -743,12 +1090,28 @@ export const recommendHotelForCustomer = async (req, res) => {
       params.push(inferredGuestCount);
     }
 
-    const rows = await queryHelper.callRpc("get_available_hotels_with_filters", {
+    // If "prefer_cheapest" is set and no explicit budget given, don't filter by
+    // budget at all — instead, fetch a wider set so we can rank by price.
+    const effectiveBudgetMax = budgetMax || null;
+
+    let rows = await queryHelper.callRpc("get_available_hotels_with_filters", {
       location_filter: location || null,
-      budget_max: budgetMax || null,
+      budget_max: effectiveBudgetMax,
       guest_count: inferredGuestCount || null,
       limit_count: limitValue
     });
+
+    // Fallback: if no rows and a budget was given, retry without budget filter
+    // (helps when user says "termurah" with an unrealistically low number, or
+    // when filters combined are too strict).
+    if (rows.length === 0 && (budgetMax || inferredGuestCount)) {
+      rows = await queryHelper.callRpc("get_available_hotels_with_filters", {
+        location_filter: location || null,
+        budget_max: null,
+        guest_count: null,
+        limit_count: limitValue
+      });
+    }
 
     if (rows.length === 0) {
       return res.status(404).json({
@@ -791,7 +1154,9 @@ export const recommendHotelForCustomer = async (req, res) => {
         ...requestData,
         budget_max: budgetMax,
         guest_count: inferredGuestCount,
-        preferred_facilities
+        preferred_facilities,
+        prefer_cheapest,
+        prefer_best_rated
       });
 
       return {
@@ -801,17 +1166,37 @@ export const recommendHotelForCustomer = async (req, res) => {
       };
     });
 
-    const rankedCandidates = candidates.sort((a, b) => {
-      if (b.local_score !== a.local_score) {
+    let rankedCandidates;
+
+    if (prefer_cheapest && !budgetMax) {
+      // Sort primarily by price ascending when user explicitly wants cheapest
+      // and gave no numeric budget.
+      rankedCandidates = candidates.sort((a, b) => {
+        if (Number(a.min_price) !== Number(b.min_price)) {
+          return Number(a.min_price) - Number(b.min_price);
+        }
         return b.local_score - a.local_score;
-      }
+      });
+    } else if (prefer_best_rated) {
+      rankedCandidates = candidates.sort((a, b) => {
+        if (Number(b.avg_rating) !== Number(a.avg_rating)) {
+          return Number(b.avg_rating) - Number(a.avg_rating);
+        }
+        return b.local_score - a.local_score;
+      });
+    } else {
+      rankedCandidates = candidates.sort((a, b) => {
+        if (b.local_score !== a.local_score) {
+          return b.local_score - a.local_score;
+        }
 
-      if (Number(b.avg_rating) !== Number(a.avg_rating)) {
-        return Number(b.avg_rating) - Number(a.avg_rating);
-      }
+        if (Number(b.avg_rating) !== Number(a.avg_rating)) {
+          return Number(b.avg_rating) - Number(a.avg_rating);
+        }
 
-      return Number(a.min_price) - Number(b.min_price);
-    });
+        return Number(a.min_price) - Number(b.min_price);
+      });
+    }
 
     const candidatesForLlm = rankedCandidates.slice(0, 10);
 
@@ -822,6 +1207,8 @@ Jangan membuat nama hotel, harga, fasilitas, rating, lokasi, atau jumlah kamar y
 Jawaban wajib JSON valid.
 Jangan gunakan markdown.
 Rekomendasikan hotel, bukan nomor kamar.
+Perhatikan preferensi customer (lokasi, budget, jumlah tamu, fasilitas, tujuan perjalanan,
+preferensi harga termurah, atau preferensi rating terbaik) saat memilih dan menjelaskan alasan.
 `;
 
     const userPrompt = JSON.stringify({
@@ -831,7 +1218,9 @@ Rekomendasikan hotel, bukan nomor kamar.
         budget_max: budgetMax,
         guest_count: inferredGuestCount,
         preferred_facilities,
-        purpose: purpose || null
+        purpose: purpose || null,
+        prefer_cheapest,
+        prefer_best_rated
       },
       candidate_hotels_from_database: candidatesForLlm,
       required_output_format: {
@@ -884,7 +1273,9 @@ Rekomendasikan hotel, bukan nomor kamar.
         budget_max: budgetMax,
         guest_count: inferredGuestCount,
         preferred_facilities,
-        purpose: purpose || null
+        purpose: purpose || null,
+        prefer_cheapest,
+        prefer_best_rated
       },
       total_candidates_from_database: rows.length,
       candidates_used_by_llm: candidatesForLlm.length,
