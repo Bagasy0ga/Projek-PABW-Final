@@ -366,7 +366,6 @@ export const createReservation = async (req, res) => {
       });
     }
 
-    // Call RPC function create_reservation
     const result = await callRpc("create_reservation", {
       p_id_user: parseInt(id_user),
       p_id_list_hotel: id_list_hotel ? parseInt(id_list_hotel) : null,
@@ -377,13 +376,19 @@ export const createReservation = async (req, res) => {
       p_checkout_time: new Date(checkout_time).toISOString()
     });
 
-    if (!result || result.length === 0) {
-      return res.status(500).json({
-        message: "Gagal membuat reservasi"
-      });
+    // RPC return JSON langsung, bukan array of rows
+    // result bisa berupa array [{create_reservation: {...}}] atau object langsung
+    let response;
+    if (Array.isArray(result)) {
+      // Supabase kadang wrap dalam array dengan key nama fungsinya
+      response = result[0]?.create_reservation || result[0];
+    } else {
+      response = result;
     }
 
-    const response = result[0];
+    if (!response) {
+      return res.status(500).json({ message: "Gagal membuat reservasi" });
+    }
 
     if (!response.success) {
       return res.status(400).json({
@@ -392,11 +397,14 @@ export const createReservation = async (req, res) => {
       });
     }
 
-    const data = JSON.parse(response.data);
-
     res.status(201).json({
       message: "Reservasi kamar berhasil dibuat",
-      data
+      data: {
+        id_history: response.id_history,
+        total: response.total,
+        days: response.days,
+        status: 'confirmed'
+      }
     });
 
   } catch (error) {
