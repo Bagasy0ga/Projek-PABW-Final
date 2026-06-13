@@ -1,5 +1,5 @@
 import express from "express";
-import HotelController from "../controllers/hotelController.js";
+import {HotelController} from "../controllers/hotelController.js";
 import {
   addHotelDescription,
   getHotelDescription,
