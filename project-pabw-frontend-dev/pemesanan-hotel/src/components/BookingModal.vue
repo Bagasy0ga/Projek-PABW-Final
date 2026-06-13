@@ -294,6 +294,8 @@ function calculateTotal() {
 }
 
 function buildReservationPayload() {
+  console.log('currentRoom:', JSON.stringify(currentRoom.value))
+  
   const payload = {
     id_user: auth.user.id,
     jumlah_kamar: Number(form.rooms) || 1,
@@ -314,6 +316,8 @@ function buildReservationPayload() {
 
   return payload
 }
+
+
 
 function handleSubmit() {
   const checkinDate = new Date(form.checkin)
