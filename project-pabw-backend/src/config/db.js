@@ -27,4 +27,6 @@ const supabase = createClient(
   }
 );
 
+console.log("✓ Supabase initialized with publishable key");
+
 export default supabase;

@@ -89,19 +89,25 @@ function createToken(user, sessionId) {
 async function saveOtp(email, purpose, otp) {
   const otpHash = hashOtp(email, purpose, otp);
 
-  await queryHelper.deleteRecord("email_verification_codes", {
-    email,
-    purpose,
-    consumed_at: null
-  });
+  // Jangan filter dengan consumed_at: null karena bisa return NULL
+  try {
+    await queryHelper.deleteRecord("email_verification_codes", {
+      email,
+      purpose
+    });
+  } catch (err) {
+    console.warn("Delete OTP record warning:", err.message);
+  }
+
+  // Hanya pass field yang diperlukan, biarkan DB set created_at via DEFAULT
+  const expiresAt = new Date(Date.now() + 10 * 60000).toISOString();
 
   await queryHelper.insert("email_verification_codes", {
     email,
     purpose,
     otp_hash: otpHash,
     attempts: 0,
-    expires_at: new Date(Date.now() + 10 * 60000).toISOString(),
-    created_at: new Date().toISOString()
+    expires_at: expiresAt
   });
 }
 
