@@ -70,38 +70,38 @@
           </div>
         </div>
         <div class="table-card" style="margin-top: 1rem">
-          <div
-            style="padding: 1rem 1.2rem; border-bottom: 1px solid var(--adm-border);"
-          >
+          <div class="table-card-header">
             <strong>Reservasi Terbaru</strong>
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Tamu</th>
-                <th>Kamar</th>
-                <th>Check-In</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(r, i) in reservasiList.slice(0, 5)" :key="r.id">
-                <td class="td-num">{{ i + 1 }}</td>
-                <td>{{ r.customer_name }}</td>
-                <td>{{ r.room_number }}</td>
-                <td class="td-muted">{{ formatDate(r.checkin_time) }}</td>
-                <td>
-                  <span :class="['status-badge', 'status-' + r.status]">{{
-                    r.status
-                  }}</span>
-                </td>
-              </tr>
-              <tr v-if="reservasiList.length === 0">
-                <td colspan="5" class="empty-row">Tidak ada reservasi terbaru.</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Tamu</th>
+                  <th>Kamar</th>
+                  <th>Check-In</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(r, i) in reservasiList.slice(0, 5)" :key="r.id">
+                  <td class="td-num">{{ i + 1 }}</td>
+                  <td>{{ r.customer_name }}</td>
+                  <td>{{ r.room_number }}</td>
+                  <td class="td-muted">{{ formatDate(r.checkin_time) }}</td>
+                  <td>
+                    <span :class="['status-badge', 'status-' + r.status]">{{
+                      r.status
+                    }}</span>
+                  </td>
+                </tr>
+                <tr v-if="reservasiList.length === 0">
+                  <td colspan="5" class="empty-row">Tidak ada reservasi terbaru.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -143,39 +143,40 @@
           </div>
         </div>
 
-        <!-- Mini list semua hotel kalau lebih dari 1 -->
         <div v-if="hotelList.length > 1" class="table-card">
-          <div style="padding: 1rem 1.2rem; border-bottom: 1px solid var(--adm-border);">
+          <div class="table-card-header">
             <strong>Semua Hotel</strong>
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Nama Hotel</th>
-                <th>Lokasi</th>
-                <th>Contact</th>
-                <th>Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(h, i) in hotelList" :key="h.id_list_hotel">
-                <td class="td-num">{{ i + 1 }}</td>
-                <td>
-                  <span :class="h.id_list_hotel === selectedHotelId ? 'badge-active-hotel' : ''">
-                    {{ h.hotel_name }}
-                  </span>
-                </td>
-                <td class="td-muted">{{ h.location }}</td>
-                <td class="td-muted">{{ h.contact_person }}</td>
-                <td>
-                  <button class="btn-sm btn-checkin" @click="selectHotel(h)">
-                    Pilih
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Nama Hotel</th>
+                  <th>Lokasi</th>
+                  <th>Contact</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(h, i) in hotelList" :key="h.id_list_hotel">
+                  <td class="td-num">{{ i + 1 }}</td>
+                  <td>
+                    <span :class="h.id_list_hotel === selectedHotelId ? 'badge-active-hotel' : ''">
+                      {{ h.hotel_name }}
+                    </span>
+                  </td>
+                  <td class="td-muted">{{ h.location }}</td>
+                  <td class="td-muted">{{ h.contact_person }}</td>
+                  <td>
+                    <button class="btn-sm btn-checkin" @click="selectHotel(h)">
+                      Pilih
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -198,61 +199,63 @@
           </select>
         </div>
         <div class="table-card">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>No. Kamar</th>
-                <th>Tipe</th>
-                <th>Harga</th>
-                <th>Kapasitas</th>
-                <th>Fasilitas</th>
-                <th>Status</th>
-                <th>Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(k, i) in filteredKamar" :key="k.id">
-                <td class="td-num">{{ i + 1 }}</td>
-                <td>{{ k.room_number }}</td>
-                <td>
-                  <span class="ref-code">{{ k.type_room }}</span>
-                </td>
-                <td class="td-price">{{ formatCurrency(k.price) }}</td>
-                <td class="td-center">{{ k.capacity }}</td>
-                <td class="td-muted td-facility">{{ k.facility }}</td>
-                <td>
-                  <span
-                    :class="[
-                      'status-badge',
-                      k.status === 'available'
-                        ? 'status-aktif'
-                        : 'status-nonaktif',
-                    ]"
-                    >{{ k.status }}</span
-                  >
-                </td>
-                <td>
-                  <div class="action-btns">
-                    <button class="btn-icon btn-edit" @click="openEditKamar(k)">
-                      ✎</button
-                    ><button
-                      class="btn-icon"
-                      :class="
-                        k.status === 'available' ? 'btn-delete' : 'btn-activate'
-                      "
-                      @click="toggleKamarStatus(k)"
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>No. Kamar</th>
+                  <th>Tipe</th>
+                  <th>Harga</th>
+                  <th>Kapasitas</th>
+                  <th>Fasilitas</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(k, i) in filteredKamar" :key="k.id">
+                  <td class="td-num">{{ i + 1 }}</td>
+                  <td>{{ k.room_number }}</td>
+                  <td>
+                    <span class="ref-code">{{ k.type_room }}</span>
+                  </td>
+                  <td class="td-price">{{ formatCurrency(k.price) }}</td>
+                  <td class="td-center">{{ k.capacity }}</td>
+                  <td class="td-muted td-facility">{{ k.facility }}</td>
+                  <td>
+                    <span
+                      :class="[
+                        'status-badge',
+                        k.status === 'available'
+                          ? 'status-aktif'
+                          : 'status-nonaktif',
+                      ]"
+                      >{{ k.status }}</span
                     >
-                      {{ k.status === "available" ? "✕" : "✓" }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              <tr v-if="filteredKamar.length === 0">
-                <td colspan="8" class="empty-row">Tidak ada data kamar.</td>
-              </tr>
-            </tbody>
-          </table>
+                  </td>
+                  <td>
+                    <div class="action-btns">
+                      <button class="btn-icon btn-edit" @click="openEditKamar(k)">
+                        ✎</button
+                      ><button
+                        class="btn-icon"
+                        :class="
+                          k.status === 'available' ? 'btn-delete' : 'btn-activate'
+                        "
+                        @click="toggleKamarStatus(k)"
+                      >
+                        {{ k.status === "available" ? "✕" : "✓" }}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="filteredKamar.length === 0">
+                  <td colspan="8" class="empty-row">Tidak ada data kamar.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -289,75 +292,84 @@
           </div>
         </div>
         <div class="table-card">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Tamu</th>
-                <th>Kamar</th>
-                <th>Check-In</th>
-                <th>Check-Out</th>
-                <th>Total</th>
-                <th>Status</th>
-                <th>Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(r, i) in filteredReservasi" :key="r.id">
-                <td class="td-num">{{ i + 1 }}</td>
-                <td>
-                  <div class="cell-with-avatar">
-                    <div class="mini-avatar mini-teal">
-                      {{ r.customer_name.charAt(0) }}
-                    </div>
-                    <div>
-                      <div>{{ r.customer_name }}</div>
-                      <div class="td-muted" style="font-size: 0.75rem">
-                        {{ r.customer_email }}
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Tamu</th>
+                  <th>Kamar</th>
+                  <th>Check-In</th>
+                  <th>Check-Out</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(r, i) in filteredReservasi" :key="r.id">
+                  <td class="td-num">{{ i + 1 }}</td>
+                  <td>
+                    <div class="cell-with-avatar">
+                      <div class="mini-avatar mini-teal">
+                        {{ r.customer_name.charAt(0) }}
+                      </div>
+                      <div>
+                        <div>{{ r.customer_name }}</div>
+                        <div class="td-muted" style="font-size: 0.75rem">
+                          {{ r.customer_email }}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </td>
-                <td>{{ r.room_number }}</td>
-                <td class="td-muted">{{ formatDate(r.checkin_time) }}</td>
-                <td class="td-muted">{{ formatDate(r.checkout_time) }}</td>
-                <td class="td-price">{{ formatCurrency(r.amount) }}</td>
-                <td>
-                  <span :class="['status-badge', 'status-' + r.status]">{{
-                    r.status
-                  }}</span>
-                </td>
-                <td>
-                  <div class="action-btns">
-                    <button
-                      v-if="r.status === 'confirmed'"
-                      class="btn-sm btn-checkin"
-                      @click="prosesCheckin(r)"
-                    >
-                      Check-In
-                    </button>
-                    <button
-                      v-if="r.status === 'checked_in'"
-                      class="btn-sm btn-checkout"
-                      @click="prosesCheckout(r)"
-                    >
-                      Check-Out
-                    </button>
-                    <button
-                      class="btn-icon btn-edit"
-                      @click="showCustomerDetail(r)"
-                      title="Detail"
-                    >
-                      ◉
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              <tr v-if="filteredReservasi.length === 0">
-                <td colspan="8" class="empty-row">Tidak ada reservasi.</td>
-              </tr>
-            </tbody>
-          </table>
+                  </td>
+                  <td>{{ r.room_number }}</td>
+                  <td class="td-muted">{{ formatDate(r.checkin_time) }}</td>
+                  <td class="td-muted">{{ formatDate(r.checkout_time) }}</td>
+                  <td class="td-price">{{ formatCurrency(r.amount) }}</td>
+                  <td>
+                    <span :class="['status-badge', 'status-' + r.status]">{{
+                      r.status
+                    }}</span>
+                  </td>
+                  <td>
+                    <div class="action-btns">
+                      <button
+                        v-if="r.status === 'confirmed'"
+                        class="btn-sm btn-checkin"
+                        @click="prosesCheckin(r)"
+                      >
+                        Check-In
+                      </button>
+                      <button
+                        v-if="r.status === 'checked_in'"
+                        class="btn-sm btn-checkout"
+                        @click="prosesCheckout(r)"
+                      >
+                        Check-Out
+                      </button>
+                      <button
+                        v-if="r.status === 'confirmed'"
+                        class="btn-sm btn-cancel"
+                        @click="prosesCancel(r)"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        class="btn-icon btn-edit"
+                        @click="showCustomerDetail(r)"
+                        title="Detail"
+                      >
+                        ◉
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="filteredReservasi.length === 0">
+                  <td colspan="8" class="empty-row">Tidak ada reservasi.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -384,68 +396,68 @@
           </div>
         </div>
         <div class="table-card" style="margin-top: 0.5rem">
-          <div
-            style="padding: 1rem 1.2rem; border-bottom: 1px solid var(--adm-border);"
-          >
+          <div class="table-card-header">
             <strong>Pendapatan Per Bulan</strong>
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Bulan</th>
-                <th>Jumlah Reservasi</th>
-                <th>Pendapatan</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="p in pendapatanBulanan" :key="p.bulan">
-                <td>{{ p.bulan }}</td>
-                <td class="td-center">{{ p.jumlah }}</td>
-                <td class="td-price">{{ formatCurrency(p.total) }}</td>
-              </tr>
-              <tr v-if="pendapatanBulanan.length === 0">
-                <td colspan="3" class="empty-row">Belum ada data pendapatan.</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Bulan</th>
+                  <th>Jumlah Reservasi</th>
+                  <th>Pendapatan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="p in pendapatanBulanan" :key="p.bulan">
+                  <td>{{ p.bulan }}</td>
+                  <td class="td-center">{{ p.jumlah }}</td>
+                  <td class="td-price">{{ formatCurrency(p.total) }}</td>
+                </tr>
+                <tr v-if="pendapatanBulanan.length === 0">
+                  <td colspan="3" class="empty-row">Belum ada data pendapatan.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
         <div class="table-card" style="margin-top: 1rem">
-          <div
-            style="padding: 1rem 1.2rem; border-bottom: 1px solid var(--adm-border);"
-          >
+          <div class="table-card-header">
             <strong>Rincian Per Reservasi</strong>
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Tamu</th>
-                <th>Kamar</th>
-                <th>Tanggal</th>
-                <th>Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(r, i) in reservasiList.filter(
-                  (r) => r.status !== 'cancelled',
-                )"
-                :key="r.id"
-              >
-                <td class="td-num">{{ i + 1 }}</td>
-                <td>{{ r.customer_name }}</td>
-                <td>{{ r.room_number }}</td>
-                <td class="td-muted">{{ formatDate(r.checkin_time) }}</td>
-                <td class="td-price">{{ formatCurrency(r.amount) }}</td>
-                <td>
-                  <span :class="['status-badge', 'status-' + r.status]">{{
-                    r.status
-                  }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Tamu</th>
+                  <th>Kamar</th>
+                  <th>Tanggal</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(r, i) in reservasiList.filter(
+                    (r) => r.status !== 'cancelled',
+                  )"
+                  :key="r.id"
+                >
+                  <td class="td-num">{{ i + 1 }}</td>
+                  <td>{{ r.customer_name }}</td>
+                  <td>{{ r.room_number }}</td>
+                  <td class="td-muted">{{ formatDate(r.checkin_time) }}</td>
+                  <td class="td-price">{{ formatCurrency(r.amount) }}</td>
+                  <td>
+                    <span :class="['status-badge', 'status-' + r.status]">{{
+                      r.status
+                    }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
         <div class="summary-footer">
           <span>Total Keseluruhan:</span
@@ -915,7 +927,6 @@ function saveHotel() {
   })
     .then(() => {
       Object.assign(hotelData, hotelForm);
-      // Update juga di hotelList
       const idx = hotelList.value.findIndex((h) => h.id_list_hotel === hotelData.id);
       if (idx !== -1) Object.assign(hotelList.value[idx], hotelForm);
       hotelSuccess.value = "Deskripsi hotel berhasil diperbarui!";
@@ -989,6 +1000,16 @@ function prosesCheckout(r) {
     .catch((error) => alert(error.message || "Check-out gagal."));
 }
 
+function prosesCancel(r) {
+  if (!confirm(`Batalkan reservasi ${r.customer_name}?`)) return
+
+  apiPut(`/booking/reservasi/${r.id_history}/cancel`, {
+    id_user: r.id_user,
+  })
+    .then(() => { r.status = "cancelled"; })
+    .catch((error) => alert(error.message || "Pembatalan gagal."));
+}
+
 const showCustomerModal = ref(false);
 const selectedReservasi = ref(null);
 function showCustomerDetail(r) {
@@ -1015,7 +1036,6 @@ function formatCurrency(n) {
 </script>
 
 <style scoped>
-/* CSS Variables - matching AdminView pattern */
 .mitra-page {
   --adm-navy: #0b2545;
   --adm-navy-800: #0f3460;
@@ -1037,10 +1057,8 @@ function formatCurrency(n) {
   --adm-shadow: 0 2px 12px rgba(11, 37, 69, 0.08);
   --adm-shadow-lg: 0 8px 32px rgba(11, 37, 69, 0.14);
   --adm-sidebar-w: 240px;
-  --adm-sidebar-collapsed: 64px;
 }
 
-/* Layout */
 .mitra-page {
   display: flex;
   min-height: 100vh;
@@ -1090,9 +1108,6 @@ function formatCurrency(n) {
 .brand-text b {
   color: #fff;
   font-weight: 700;
-}
-.collapse-btn {
-  display: none;
 }
 .sidebar-nav {
   flex: 1;
@@ -1193,6 +1208,11 @@ function formatCurrency(n) {
   top: 0;
   z-index: 50;
 }
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
 .page-title {
   font-size: 1.15rem;
   font-weight: 700;
@@ -1257,18 +1277,10 @@ function formatCurrency(n) {
   font-size: 1.4rem;
   flex-shrink: 0;
 }
-.sc-green {
-  background: var(--adm-green-light);
-}
-.sc-blue {
-  background: #eff6ff;
-}
-.sc-teal {
-  background: var(--adm-teal-light);
-}
-.sc-amber {
-  background: var(--adm-amber-light);
-}
+.sc-green { background: var(--adm-green-light); }
+.sc-blue { background: #eff6ff; }
+.sc-teal { background: var(--adm-teal-light); }
+.sc-amber { background: var(--adm-amber-light); }
 .stat-card-info {
   display: flex;
   flex-direction: column;
@@ -1300,9 +1312,7 @@ function formatCurrency(n) {
   gap: 1rem;
   align-items: flex-start;
 }
-.detail-row:last-child {
-  border-bottom: none;
-}
+.detail-row:last-child { border-bottom: none; }
 .detail-label {
   font-size: 0.8rem;
   font-weight: 700;
@@ -1349,22 +1359,9 @@ function formatCurrency(n) {
   color: var(--adm-text);
   outline: none;
   transition: border-color 0.2s;
+  box-sizing: border-box;
 }
-.search-input:focus {
-  border-color: var(--adm-navy);
-}
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-.filter-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--adm-muted);
-}
+.search-input:focus { border-color: var(--adm-navy); }
 .filter-select {
   padding: 0.5rem 0.8rem;
   border: 1.5px solid var(--adm-border);
@@ -1403,9 +1400,7 @@ function formatCurrency(n) {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.chip-green .chip-num {
-  color: var(--adm-green);
-}
+.chip-green .chip-num { color: var(--adm-green); }
 
 /* Buttons */
 .btn-primary {
@@ -1417,9 +1412,7 @@ function formatCurrency(n) {
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  transition:
-    background 0.2s,
-    transform 0.15s;
+  transition: background 0.2s, transform 0.15s;
   white-space: nowrap;
 }
 .btn-primary:hover {
@@ -1448,6 +1441,7 @@ function formatCurrency(n) {
   border: none;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 .btn-checkin {
   background: var(--adm-green-light);
@@ -1465,6 +1459,14 @@ function formatCurrency(n) {
   background: var(--adm-amber);
   color: #fff;
 }
+.btn-cancel {
+  background: var(--adm-red-light);
+  color: var(--adm-red);
+}
+.btn-cancel:hover {
+  background: var(--adm-red);
+  color: #fff;
+}
 
 /* Table */
 .table-card {
@@ -1474,9 +1476,22 @@ function formatCurrency(n) {
   overflow: hidden;
   box-shadow: var(--adm-shadow);
 }
+.table-card-header {
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+/* KEY FIX: wrapper yang bisa di-scroll horizontal */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 600px; /* paksa tabel punya lebar minimum */
 }
 .data-table th {
   background: var(--adm-navy);
@@ -1487,6 +1502,7 @@ function formatCurrency(n) {
   letter-spacing: 0.7px;
   padding: 0.85rem 1rem;
   text-align: left;
+  white-space: nowrap;
 }
 .data-table td {
   padding: 0.9rem 1rem;
@@ -1494,27 +1510,17 @@ function formatCurrency(n) {
   border-bottom: 1px solid var(--adm-border);
   vertical-align: middle;
 }
-.data-table tr:last-child td {
-  border-bottom: none;
-}
-.data-table tbody tr {
-  transition: background 0.15s;
-}
-.data-table tbody tr:hover {
-  background: var(--adm-bg);
-}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tbody tr { transition: background 0.15s; }
+.data-table tbody tr:hover { background: var(--adm-bg); }
 .td-num {
   color: var(--adm-muted);
   font-size: 0.8rem;
   text-align: center;
   width: 40px;
 }
-.td-muted {
-  color: var(--adm-muted);
-}
-.td-center {
-  text-align: center;
-}
+.td-muted { color: var(--adm-muted); }
+.td-center { text-align: center; }
 .td-price {
   font-weight: 700;
   color: var(--adm-navy);
@@ -1544,9 +1550,7 @@ function formatCurrency(n) {
   justify-content: center;
   flex-shrink: 0;
 }
-.mini-teal {
-  background: var(--adm-teal);
-}
+.mini-teal { background: var(--adm-teal); }
 .ref-code {
   font-family: monospace;
   font-size: 0.82rem;
@@ -1566,6 +1570,7 @@ function formatCurrency(n) {
   font-weight: 700;
   text-transform: capitalize;
   letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 .status-aktif,
 .status-confirmed,
@@ -1596,6 +1601,7 @@ function formatCurrency(n) {
   display: flex;
   gap: 0.4rem;
   align-items: center;
+  flex-wrap: nowrap;
 }
 .btn-icon {
   width: 30px;
@@ -1609,6 +1615,7 @@ function formatCurrency(n) {
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 .btn-edit:hover {
   background: var(--adm-navy);
@@ -1674,9 +1681,7 @@ function formatCurrency(n) {
   box-shadow: var(--adm-shadow-lg);
   border-top: 4px solid var(--adm-navy);
 }
-.modal-sm {
-  max-width: 420px;
-}
+.modal-sm { max-width: 420px; }
 .modal-header {
   display: flex;
   align-items: center;
@@ -1708,9 +1713,7 @@ function formatCurrency(n) {
   background: var(--adm-bg);
   color: var(--adm-red);
 }
-.modal-form {
-  padding: 1.3rem 1.5rem;
-}
+.modal-form { padding: 1.3rem 1.5rem; }
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1739,9 +1742,7 @@ function formatCurrency(n) {
   background: var(--adm-white);
   color: var(--adm-text);
   outline: none;
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
   font-family: inherit;
 }
 .form-group input:focus,
@@ -1778,22 +1779,13 @@ function formatCurrency(n) {
 
 /* Transitions */
 .modal-fade-enter-active,
-.modal-fade-leave-active {
-  transition: opacity 0.25s ease;
-}
+.modal-fade-leave-active { transition: opacity 0.25s ease; }
 .modal-fade-enter-from,
-.modal-fade-leave-to {
-  opacity: 0;
-}
+.modal-fade-leave-to { opacity: 0; }
 .notif-enter-active,
-.notif-leave-active {
-  transition: all 0.3s ease;
-}
+.notif-leave-active { transition: all 0.3s ease; }
 .notif-enter-from,
-.notif-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
-}
+.notif-leave-to { opacity: 0; transform: translateY(-6px); }
 
 /* Hamburger */
 .hamburger-btn {
@@ -1826,102 +1818,7 @@ function formatCurrency(n) {
   transition: opacity 0.3s;
 }
 
-/* Responsive */
-@media (max-width: 900px) {
-  .topbar-right .stat-pill.hide-xs {
-    display: none;
-  }
-}
-@media (max-width: 768px) {
-  .hamburger-btn {
-    display: flex;
-  }
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    height: 100vh;
-    transform: translateX(-110%);
-    transition:
-      transform 0.3s ease,
-      width 0.3s ease;
-    z-index: 200;
-    width: var(--adm-sidebar-w) !important;
-  }
-  .sidebar.mobile-open {
-    transform: translateX(0);
-  }
-  .sidebar-overlay {
-    display: block;
-  }
-  .sidebar-overlay.active {
-    opacity: 1;
-    pointer-events: all;
-  }
-  .admin-main {
-    width: 100%;
-  }
-  .topbar {
-    padding: 0.75rem 1rem;
-    gap: 0.6rem;
-  }
-  .topbar-left {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-  }
-  .tab-content {
-    padding: 1rem 1rem 3rem;
-  }
-  .action-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .search-wrap {
-    max-width: 100%;
-  }
-  .stat-chips {
-    margin-left: 0;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-  .filter-select {
-    min-width: unset;
-    width: 100%;
-  }
-  .table-card {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .data-table {
-    min-width: 600px;
-  }
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-  .page-breadcrumb {
-    display: none;
-  }
-  .stats-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-@media (max-width: 480px) {
-  .stat-pill {
-    font-size: 0.72rem;
-    padding: 0.25rem 0.65rem;
-  }
-  .page-title {
-    font-size: 1rem;
-  }
-  .tab-content {
-    padding: 0.75rem 0.75rem 3rem;
-  }
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
+/* Hotel card */
 .hotel-card-header {
   display: flex;
   align-items: center;
@@ -1943,5 +1840,47 @@ function formatCurrency(n) {
 .badge-active-hotel {
   font-weight: 700;
   color: var(--adm-accent);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .topbar-right .stat-pill.hide-xs { display: none; }
+}
+
+@media (max-width: 768px) {
+  .hamburger-btn { display: flex; }
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    transform: translateX(-110%);
+    transition: transform 0.3s ease;
+    z-index: 200;
+    width: var(--adm-sidebar-w) !important;
+  }
+  .sidebar.mobile-open { transform: translateX(0); }
+  .sidebar-overlay { display: block; }
+  .sidebar-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .admin-main { width: 100%; }
+  .topbar { padding: 0.75rem 1rem; gap: 0.6rem; }
+  .tab-content { padding: 1rem 1rem 3rem; }
+  .action-bar { flex-direction: column; align-items: stretch; }
+  .search-wrap { max-width: 100%; }
+  .stat-chips { margin-left: 0; justify-content: flex-start; flex-wrap: wrap; }
+  .filter-select { min-width: unset; width: 100%; }
+  .page-breadcrumb { display: none; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .stat-pill { font-size: 0.72rem; padding: 0.25rem 0.65rem; }
+  .page-title { font-size: 1rem; }
+  .tab-content { padding: 0.75rem 0.75rem 3rem; }
+  .stats-grid { grid-template-columns: 1fr; }
 }
 </style>
