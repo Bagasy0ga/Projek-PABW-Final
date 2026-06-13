@@ -1,9 +1,8 @@
-import pool from "../config/db.js";
+import { select, selectOne, insert, update, callRpc } from "../utils/queryHelper.js";
 
 // CREATE kamar baru
 export const createRoom = async (req, res) => {
   try {
-    // PERBAIKAN: Ganti id_detail menjadi id_detail_kamar
     const { room_number, price, id_list_hotel, id_detail_kamar, status } = req.body;
 
     if (!room_number || room_number.trim() === "") {
@@ -14,7 +13,6 @@ export const createRoom = async (req, res) => {
       return res.status(400).json({ message: "Harga harus lebih besar dari 0." });
     }
 
-    // PERBAIKAN: Ganti id_detail menjadi id_detail_kamar
     if (!id_detail_kamar) {
       return res.status(400).json({ message: "Detail ID wajib diisi." });
     }
@@ -23,54 +21,49 @@ export const createRoom = async (req, res) => {
       return res.status(400).json({ message: "Hotel ID wajib diisi." });
     }
 
-    const [hotelRows] = await pool.query(
-      `SELECT id_list_hotel FROM list_hotel WHERE id_list_hotel = ?`,
-      [parseInt(id_list_hotel)]
-    );
+    const hotel = await selectOne("list_hotel", { id_list_hotel: parseInt(id_list_hotel) });
 
-    if (hotelRows.length === 0) {
+    if (!hotel) {
       return res.status(404).json({ message: "Hotel tidak ditemukan." });
     }
 
-    // PERBAIKAN: Ganti id_detail menjadi id_detail_kamar
-    const [detailRows] = await pool.query(
-      `SELECT id_detail_kamar FROM detail_kamar WHERE id_detail_kamar = ?`,
-      [parseInt(id_detail_kamar)]
-    );
+    const detail = await selectOne("detail_kamar", { id_detail_kamar: parseInt(id_detail_kamar) });
 
-    if (detailRows.length === 0) {
+    if (!detail) {
       return res.status(404).json({ message: "Detail kamar tidak ditemukan." });
     }
 
-    const [existingRoom] = await pool.query(
-      `SELECT id_list_kamar FROM list_kamar WHERE room_number = ? AND id_list_hotel = ?`,
-      [room_number.trim(), parseInt(id_list_hotel)]
-    );
+    const existingRoom = await selectOne("list_kamar", {
+      room_number: room_number.trim(),
+      id_list_hotel: parseInt(id_list_hotel)
+    });
 
-    if (existingRoom.length > 0) {
+    if (existingRoom) {
       return res.status(409).json({ message: "Nomor kamar sudah ada di hotel ini." });
     }
 
     const roomStatus = status ? status.toUpperCase() : "AVAILABLE";
 
-    const [result] = await pool.query(
-      `INSERT INTO list_kamar (id_list_hotel, id_detail_kamar, room_number, price, status) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [parseInt(id_list_hotel), parseInt(id_detail_kamar), room_number.trim(), parseFloat(price), roomStatus]
-    );
+    const result = await insert("list_kamar", {
+      id_list_hotel: parseInt(id_list_hotel),
+      id_detail_kamar: parseInt(id_detail_kamar),
+      room_number: room_number.trim(),
+      price: parseFloat(price),
+      status: roomStatus
+    });
 
-    const [newRoom] = await pool.query(
-      `SELECT k.id_list_kamar, k.room_number, k.price, k.status, lh.hotel_name, dk.type_room, dk.description,dk.facility, dk.capacity 
-       FROM list_kamar k
-       JOIN list_hotel lh ON k.id_list_hotel = lh.id_list_hotel
-       JOIN detail_kamar dk ON k.id_detail_kamar = dk.id_detail_kamar
-       WHERE k.id_list_kamar = ?`,
-      [result.insertId]
-    );
+    if (!result || result.length === 0) {
+      return res.status(500).json({ error: "Gagal menambahkan kamar" });
+    }
+
+    const newRoomId = result[0].id_list_kamar;
+
+    // Fetch the complete room data with joins
+    const newRoom = await selectOne("list_kamar", { id_list_kamar: newRoomId });
 
     res.status(201).json({
       message: "Kamar berhasil ditambahkan",
-      data: newRoom[0]
+      data: newRoom
     });
 
   } catch (error) {
@@ -83,29 +76,32 @@ export const getRoomCategories = async (req, res) => {
   try {
     const { id_list_hotel } = req.query;
 
-    let query = `
-      SELECT DISTINCT
-        dk.id_detail_kamar,
-        dk.type_room,
-        dk.description,
-        dk.facility,
-        dk.capacity
-      FROM detail_kamar dk
-    `;
-
-    const params = [];
+    let categories = [];
 
     if (id_list_hotel) {
-      query += `
-        JOIN list_kamar lk ON dk.id_detail_kamar = lk.id_detail_kamar
-        WHERE lk.id_list_hotel = ?
-      `;
-      params.push(parseInt(id_list_hotel));
+      // Fetch distinct detail_kamar for specific hotel
+      const detailKamars = await select("detail_kamar", {
+        select: "id_detail_kamar, type_room, description, facility, capacity"
+      });
+
+      // Filter by hotel if needed (get rooms of this detail type in hotel)
+      const roomsInHotel = await select("list_kamar", {
+        where: { id_list_hotel: parseInt(id_list_hotel) },
+        select: "id_detail_kamar"
+      });
+
+      const detailKamarIds = new Set(roomsInHotel.map(r => r.id_detail_kamar));
+      categories = detailKamars.filter(d => detailKamarIds.has(d.id_detail_kamar));
+    } else {
+      categories = await select("detail_kamar", {
+        select: "id_detail_kamar, type_room, description, facility, capacity",
+        order: { column: "type_room", ascending: true }
+      });
     }
 
-    query += ` ORDER BY dk.type_room ASC`;
-
-    const [categories] = await pool.query(query, params);
+    if (!categories || categories.length === 0) {
+      categories = [];
+    }
 
     res.json({
       message: "Kategori kamar berhasil diambil",
@@ -134,119 +130,47 @@ export const getAvailableRooms = async (req, res) => {
       return res.status(400).json({ message: "ID hotel wajib diisi." });
     }
 
-    const params = [parseInt(id_list_hotel)];
-    let where = `WHERE lk.id_list_hotel = ?`;
-
-    if (type_room) {
-      where += ` AND dk.type_room LIKE ?`;
-      params.push(`%${type_room.trim()}%`);
-    }
-
-    if (capacity) {
-      where += ` AND dk.capacity >= ?`;
-      params.push(parseInt(capacity));
-    }
-
-    if (min_price) {
-      where += ` AND lk.price >= ?`;
-      params.push(parseFloat(min_price));
-    }
-
-    if (max_price) {
-      where += ` AND lk.price <= ?`;
-      params.push(parseFloat(max_price));
-    }
-
     const limitVal = parseInt(limit);
     const offsetVal = parseInt(offset);
 
-    const [rooms] = await pool.query(
-      `
-      SELECT
-        lh.id_list_hotel,
-        lh.hotel_name,
-        lh.location,
+    // Call RPC function
+    const rooms = await callRpc("get_available_rooms", {
+      p_id_list_hotel: parseInt(id_list_hotel),
+      p_type_room: type_room || null,
+      p_capacity: capacity ? parseInt(capacity) : null,
+      p_min_price: min_price ? parseFloat(min_price) : null,
+      p_max_price: max_price ? parseFloat(max_price) : null,
+      p_limit: limitVal,
+      p_offset: offsetVal
+    });
 
-        dk.id_detail_kamar,
-        dk.type_room,
-        dk.description,
-        dk.facility,
-        dk.capacity,
+    // Get total count for pagination
+    const totalResult = await callRpc("get_available_rooms", {
+      p_id_list_hotel: parseInt(id_list_hotel),
+      p_type_room: type_room || null,
+      p_capacity: capacity ? parseInt(capacity) : null,
+      p_min_price: min_price ? parseFloat(min_price) : null,
+      p_max_price: max_price ? parseFloat(max_price) : null,
+      p_limit: 999999,
+      p_offset: 0
+    });
 
-        MIN(lk.price) AS price,
+    const total = (totalResult || []).length;
 
-        COUNT(lk.id_list_kamar) AS total_rooms,
+    res.json({
+      message: "Tipe kamar tersedia berhasil diambil",
+      data: rooms || [],
+      pagination: {
+        total,
+        limit: limitVal,
+        offset: offsetVal
+      }
+    });
 
-        SUM(
-          CASE
-            WHEN lk.status = 'available' THEN 1
-            ELSE 0
-          END
-        ) AS available_count,
-
-        SUM(
-          CASE
-            WHEN lk.status <> 'available' THEN 1
-            ELSE 0
-          END
-        ) AS unavailable_count,
-
-        MIN(
-          CASE
-            WHEN lk.status = 'available' THEN lk.id_list_kamar
-            ELSE NULL
-          END
-        ) AS id_list_kamar,
-
-        GROUP_CONCAT(
-          CASE
-            WHEN lk.status = 'available' THEN lk.id_list_kamar
-            ELSE NULL
-          END
-          ORDER BY lk.room_number ASC
-        ) AS available_room_ids
-
-      FROM list_kamar lk
-      JOIN list_hotel lh
-        ON lk.id_list_hotel = lh.id_list_hotel
-      JOIN detail_kamar dk
-        ON lk.id_detail_kamar = dk.id_detail_kamar
-
-      ${where}
-
-      GROUP BY
-        lh.id_list_hotel,
-        lh.hotel_name,
-        lh.location,
-        dk.id_detail_kamar,
-        dk.type_room,
-        dk.description,
-        dk.facility,
-        dk.capacity
-
-      HAVING available_count > 0
-
-      ORDER BY dk.type_room ASC
-      LIMIT ? OFFSET ?
-      `,
-      [...params, limitVal, offsetVal]
-    );
-
-    const [[{ total }]] = await pool.query(
-      `
-      SELECT COUNT(*) AS total
-      FROM (
-        SELECT dk.id_detail_kamar
-        FROM list_kamar lk
-        JOIN detail_kamar dk
-          ON lk.id_detail_kamar = dk.id_detail_kamar
-        ${where}
-        GROUP BY dk.id_detail_kamar
-        HAVING SUM(CASE WHEN lk.status = 'available' THEN 1 ELSE 0 END) > 0
-      ) grouped_rooms
-      `,
-      params
-    );
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
 
     res.json({
       message: "Tipe kamar tersedia berhasil diambil",
@@ -273,57 +197,33 @@ export const getRoomAvailability = async (req, res) => {
       include_rooms = "true"
     } = req.query;
 
-    const params = [];
-    let where = "WHERE 1=1";
+    // Call RPC function
+    const result = await callRpc("get_room_availability", {
+      p_id_company_profile: id_company_profile ? parseInt(id_company_profile) : null,
+      p_id_list_hotel: id_list_hotel ? parseInt(id_list_hotel) : null,
+      p_include_rooms: include_rooms === "true"
+    });
 
-    if (id_company_profile) {
-      where += " AND lh.id_company_profile = ?";
-      params.push(parseInt(id_company_profile));
-    }
+    const summary = [];
+    const rooms = [];
 
-    if (id_list_hotel) {
-      where += " AND lh.id_list_hotel = ?";
-      params.push(parseInt(id_list_hotel));
-    }
+    if (result && Array.isArray(result)) {
+      result.forEach(item => {
+        summary.push({
+          id_list_hotel: item.id_list_hotel,
+          hotel_name: item.hotel_name,
+          total_kamar: Number(item.total_kamar) || 0,
+          kamar_tersedia: Number(item.kamar_tersedia) || 0,
+          kamar_tidak_tersedia: Number(item.kamar_tidak_tersedia) || 0
+        });
 
-    const [summary] = await pool.query(
-      `SELECT
-        lh.id_list_hotel,
-        lh.hotel_name,
-        COUNT(lk.id_list_kamar) AS total_kamar,
-        SUM(CASE WHEN lk.status = 'available' THEN 1 ELSE 0 END) AS kamar_tersedia,
-        SUM(CASE WHEN lk.status = 'not available' THEN 1 ELSE 0 END) AS kamar_tidak_tersedia
-      FROM list_hotel lh
-      LEFT JOIN list_kamar lk ON lh.id_list_hotel = lk.id_list_hotel
-      ${where}
-      GROUP BY lh.id_list_hotel, lh.hotel_name
-      ORDER BY lh.hotel_name ASC`,
-      params
-    );
-
-    let rooms = [];
-
-    if (include_rooms === "true") {
-      const [roomRows] = await pool.query(
-        `SELECT
-          lk.id_list_kamar,
-          lk.room_number,
-          lk.price,
-          lk.status,
-          lh.id_list_hotel,
-          lh.hotel_name,
-          dk.id_detail_kamar,
-          dk.type_room,
-          dk.capacity
-        FROM list_kamar lk
-        JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-        JOIN detail_kamar dk ON lk.id_detail_kamar = dk.id_detail_kamar
-        ${where}
-        ORDER BY lh.hotel_name ASC, lk.room_number ASC`,
-        params
-      );
-
-      rooms = roomRows;
+        if (item.rooms && typeof item.rooms === 'string') {
+          const parsedRooms = JSON.parse(item.rooms);
+          if (Array.isArray(parsedRooms)) {
+            rooms.push(...parsedRooms);
+          }
+        }
+      });
     }
 
     res.json({

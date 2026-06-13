@@ -1,177 +1,170 @@
-import pool from '../config/db.js';
-import { successResponse, errorResponse } from "../models/apiResponse.js";
+import { callRpc, selectOne, select } from '../utils/queryHelper.js';
 
-class CheckoutController {
-    // Proses checkout
-    static async performCheckout(req, res) {
-    const connection = await pool.getConnection();
-
+// Proses checkout menggunakan RPC function
+export const performCheckout = async (req, res) => {
     try {
-      const { id_history } = req.params;
-      const { checkout_time } = req.body;
+        const { id_history } = req.params;
+        const { id_user, checkout_time } = req.body;
 
-      if (!id_history) {
-        return res.status(400).json({
-          status: "error",
-          message: "id_history harus disediakan",
+        if (!id_history) {
+            return res.status(400).json({
+                status: "error",
+                message: "id_history harus disediakan",
+            });
+        }
+
+        if (!id_user) {
+            return res.status(400).json({
+                status: "error",
+                message: "id_user harus disediakan",
+            });
+        }
+
+        // Call RPC function perform_checkout yang sudah ada di Supabase
+        const result = await callRpc("perform_checkout", {
+            p_id_history: parseInt(id_history),
+            p_id_user: parseInt(id_user),
+            p_checkout_time: checkout_time ? new Date(checkout_time).toISOString() : null
         });
-      }
 
-      await connection.beginTransaction();
+        if (!result || result.length === 0) {
+            return res.status(500).json({
+                status: "error",
+                message: "Gagal melakukan checkout"
+            });
+        }
 
-      const [reservationRows] = await connection.query(
-        `
-        SELECT 
-          hp.id_history,
-          hp.id_list_kamar,
-          hp.status
-        FROM history_purchase hp
-        WHERE hp.id_history = ?
-          AND hp.status = 'checkin'
-        FOR UPDATE
-        `,
-        [id_history]
-      );
+        const response = result[0];
 
-      if (reservationRows.length === 0) {
-        await connection.rollback();
+        if (!response.success) {
+            return res.status(400).json({
+                status: "error",
+                message: response.message
+            });
+        }
 
-        return res.status(404).json({
-          status: "error",
-          message: "Reservasi tidak ditemukan atau belum berstatus checkin",
+        return res.status(200).json({
+            status: "success",
+            message: "Checkout berhasil dilakukan",
+            data: JSON.parse(response.data)
         });
-      }
-
-      const reservation = reservationRows[0];
-
-      await connection.query(
-        `
-        UPDATE history_purchase
-        SET 
-          status = 'checkout',
-          checkout_time = COALESCE(?, NOW())
-        WHERE id_history = ?
-        `,
-        [checkout_time || null, id_history]
-      );
-
-      await connection.query(
-        `
-        UPDATE list_kamar
-        SET status = 'available'
-        WHERE id_list_kamar = ?
-        `,
-        [reservation.id_list_kamar]
-      );
-
-      await connection.commit();
-
-      return res.status(200).json({
-        status: "success",
-        message: "Checkout berhasil dilakukan",
-      });
     } catch (error) {
-      await connection.rollback();
-
-      return res.status(500).json({
-        status: "error",
-        message: "Terjadi kesalahan saat checkout",
-        detail: error.message,
-      });
-    } finally {
-      connection.release();
+        console.error("Error:", error.message);
+        return res.status(500).json({
+            status: "error",
+            message: "Terjadi kesalahan saat checkout",
+            detail: error.message,
+        });
     }
-  }
+};
 
-    // Mendapatkan detail masa menginap sebelum checkout
-    static async getCheckoutDetails(id_history, id_user) {
-        try {
-            if (!id_history || !id_user) {
-                return errorResponse({
-                    message: "id_history dan id_user tidak boleh kosong"
-                });
-            }
+// Mendapatkan detail masa menginap sebelum checkout
+export const getCheckoutDetails = async (req, res) => {
+    try {
+        const { id_history, id_user } = req.params;
 
-            const [reservation] = await pool.query(
-                `SELECT hp.*, lh.hotel_name, lh.location
-                 FROM history_purchase hp
-                 JOIN list_kamar lk ON hp.id_list_kamar = lk.id_list_kamar
-                 JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-                 WHERE hp.id_history = ? AND hp.id_user = ?`,
-                [id_history, id_user]
-            );
+        if (!id_history || !id_user) {
+            return res.status(400).json({
+                message: "id_history dan id_user tidak boleh kosong"
+            });
+        }
 
-            if (reservation.length === 0) {
-                return errorResponse({
-                    message: "Data reservasi tidak ditemukan"
-                });
-            }
+        const reservation = await selectOne("history_purchase", {
+            id_history: parseInt(id_history),
+            id_user: parseInt(id_user)
+        });
 
-            // Hitung durasi menginap
-            const checkinTime = new Date(reservation[0].checkin_time);
-            const checkoutTime = new Date(reservation[0].checkout_time);
+        if (!reservation) {
+            return res.status(404).json({
+                message: "Data reservasi tidak ditemukan"
+            });
+        }
+
+        // Get hotel info
+        const room = await selectOne("list_kamar", { id_list_kamar: reservation.id_list_kamar });
+        const hotel = await selectOne("list_hotel", { id_list_hotel: room?.id_list_hotel });
+
+        // Hitung durasi menginap
+        const checkinTime = reservation.checkin_time ? new Date(reservation.checkin_time) : null;
+        const checkoutTime = reservation.checkout_time ? new Date(reservation.checkout_time) : null;
+        
+        let duration = { hours: 0, days: 0 };
+        if (checkinTime && checkoutTime) {
             const durationMs = checkoutTime - checkinTime;
             const durationHours = durationMs / (1000 * 60 * 60);
-            const durationDays = Math.ceil(durationHours / 24);
+            duration = {
+                hours: durationHours.toFixed(2),
+                days: Math.ceil(durationHours / 24)
+            };
+        }
 
-            return successResponse({
-                message: 'Detail checkout ditemukan',
-                data: {
-                    ...reservation[0],
-                    duration: {
-                        hours: durationHours.toFixed(2),
-                        days: durationDays
-                    },
-                    billing_info: {
-                        base_amount: reservation[0].amount,
-                        late_checkout_fee: 'Akan dihitung saat checkout'
-                    }
+        return res.status(200).json({
+            message: 'Detail checkout ditemukan',
+            data: {
+                ...reservation,
+                hotel_name: hotel?.hotel_name,
+                location: hotel?.location,
+                duration,
+                billing_info: {
+                    base_amount: reservation.amount,
+                    late_checkout_fee: 'Akan dihitung saat checkout'
                 }
-            });
-        } catch (error) {
-            console.error("Error:", error.message);
-            return errorResponse({
-                message: error.message
+            }
+        });
+    } catch (error) {
+        console.error("Error:", error.message);
+        return res.status(500).json({
+            message: error.message
+        });
+    }
+};
+
+// Mendapatkan checkout history
+export const getCheckoutHistory = async (req, res) => {
+    try {
+        const { id_user } = req.params;
+
+        if (!id_user) {
+            return res.status(400).json({
+                message: "id_user tidak boleh kosong"
             });
         }
-    }
 
-    // Mendapatkan checkout history
-    static async getCheckoutHistory(id_user) {
-        try {
-            if (!id_user) {
-                return errorResponse({
-                    message: "id_user tidak boleh kosong"
-                });
-            }
+        const history = await select("history_purchase", {
+            where: {
+                id_user: parseInt(id_user),
+                status: "checkout"
+            },
+            order: { column: "checkout_time", ascending: false }
+        });
 
-            const [history] = await pool.query(
-                `SELECT hp.*, lh.hotel_name, lh.location
-                 FROM history_purchase hp
-                 JOIN list_kamar lk ON hp.id_list_kamar = lk.id_list_kamar
-                 JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-                 WHERE hp.id_user = ? AND hp.status = 'checkout'
-                 ORDER BY hp.checkout_time DESC`,
-                [id_user]
-            );
-
-            if (history.length === 0) {
-                return errorResponse({
-                    message: "Tidak ada riwayat checkout ditemukan"
-                });
-            }
-
-            return successResponse({
-                message: 'Riwayat checkout ditemukan',
-                data: history
-            });
-        } catch (error) {
-            console.error("Error:", error.message);
-            return errorResponse({
-                message: error.message
+        if (!history || history.length === 0) {
+            return res.status(404).json({
+                message: "Tidak ada riwayat checkout ditemukan"
             });
         }
-    }
-}
 
-export { CheckoutController as default };
+        // Enrich dengan hotel info
+        const enrichedHistory = await Promise.all(
+            history.map(async (item) => {
+                const room = await selectOne("list_kamar", { id_list_kamar: item.id_list_kamar });
+                const hotel = await selectOne("list_hotel", { id_list_hotel: room?.id_list_hotel });
+                return {
+                    ...item,
+                    hotel_name: hotel?.hotel_name,
+                    location: hotel?.location
+                };
+            })
+        );
+
+        return res.status(200).json({
+            message: 'Riwayat checkout ditemukan',
+            data: enrichedHistory
+        });
+    } catch (error) {
+        console.error("Error:", error.message);
+        return res.status(500).json({
+            message: error.message
+        });
+    }
+};

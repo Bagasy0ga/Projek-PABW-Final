@@ -1,22 +1,22 @@
-import pool from "../config/db.js";
+import { select, selectOne, count } from "../utils/queryHelper.js";
 
 // GET session login berdasarkan userId
 export const getSessionByUserId = async (req, res) => {
   try {
     const { id_user } = req.params;
 
-    const [rows] = await pool.query(
-      `SELECT * FROM session_login WHERE id_user = ? AND status = 'active' ORDER BY login_time DESC LIMIT 1`,
-      [parseInt(id_user)]
-    );
+    const session = await selectOne("session_login", {
+      id_user: parseInt(id_user),
+      status: "active"
+    });
 
-    if (rows.length === 0) {
+    if (!session) {
       return res.status(404).json({ message: "Session login tidak ditemukan untuk user ini." });
     }
 
     res.json({
       message: "Data session login berhasil diambil",
-      data: rows[0]
+      data: session
     });
 
   } catch (error) {
@@ -29,26 +29,22 @@ export const getActiveSessions = async (req, res) => {
   try {
     const { user_type, limit = 20, offset = 0 } = req.query;
 
-    let where = "WHERE status = 'active'";
-    const params = [];
-
-    if (user_type) {
-      where += " AND user_type = ?";
-      params.push(user_type.toLowerCase());
-    }
-
     const limitVal = parseInt(limit);
     const offsetVal = parseInt(offset);
 
-    const [sessions] = await pool.query(
-      `SELECT * FROM session_login ${where} ORDER BY last_activity DESC LIMIT ? OFFSET ?`,
-      [...params, limitVal, offsetVal]
-    );
+    const whereOptions = { status: "active" };
+    if (user_type) {
+      whereOptions.user_type = user_type.toLowerCase();
+    }
 
-    const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) as total FROM session_login ${where}`,
-      params
-    );
+    const sessions = await select("session_login", {
+      where: whereOptions,
+      order: { column: "last_activity", ascending: false },
+      limit: limitVal,
+      offset: offsetVal
+    });
+
+    const total = await count("session_login", whereOptions);
 
     res.json({
       message: "Data active session login berhasil diambil",
@@ -70,27 +66,22 @@ export const getAllSessionsHistory = async (req, res) => {
   try {
     const { user_type, limit = 20, offset = 0 } = req.query;
 
-    let where = "WHERE 1=1";
-    const params = [];
-
-    if (user_type) {
-      where += " AND user_type = ?";
-      params.push(user_type.toLowerCase());
-    }
-
     const limitVal = parseInt(limit);
     const offsetVal = parseInt(offset);
 
-    // Gunakan pool.query() agar LIMIT & OFFSET tidak error
-    const [sessions] = await pool.query(
-      `SELECT * FROM session_login ${where} ORDER BY login_time DESC LIMIT ? OFFSET ?`,
-      [...params, limitVal, offsetVal]
-    );
+    const whereOptions = {};
+    if (user_type) {
+      whereOptions.user_type = user_type.toLowerCase();
+    }
 
-    const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) as total FROM session_login ${where}`,
-      params
-    );
+    const sessions = await select("session_login", {
+      where: whereOptions,
+      order: { column: "login_time", ascending: false },
+      limit: limitVal,
+      offset: offsetVal
+    });
+
+    const total = await count("session_login", whereOptions);
 
     res.json({
       message: "Data semua session login berhasil diambil",

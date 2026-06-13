@@ -1,4 +1,4 @@
-import pool from "../config/db.js";
+import { select, selectOne, insert, update } from "../utils/queryHelper.js";
 
 export const addHotelDescription = async (req, res) => {
   try {
@@ -10,63 +10,32 @@ export const addHotelDescription = async (req, res) => {
       });
     }
 
-    const [hotelRows] = await pool.query(
-      `
-      SELECT id_list_hotel
-      FROM list_hotel
-      WHERE id_list_hotel = ?
-      `,
-      [parseInt(id_list_hotel)]
-    );
+    const hotel = await selectOne("list_hotel", { id_list_hotel: parseInt(id_list_hotel) });
 
-    if (hotelRows.length === 0) {
+    if (!hotel) {
       return res.status(404).json({
         message: "Hotel tidak ditemukan."
       });
     }
 
-    const [existingRows] = await pool.query(
-      `
-      SELECT id_deskripsi_hotel
-      FROM deskripsi_hotel
-      WHERE id_list_hotel = ?
-      `,
-      [parseInt(id_list_hotel)]
-    );
+    const existing = await selectOne("deskripsi_hotel", { id_list_hotel: parseInt(id_list_hotel) });
 
-    if (existingRows.length > 0) {
+    if (existing) {
       return res.status(409).json({
         message: "Deskripsi hotel sudah ada. Gunakan endpoint update untuk mengubah data."
       });
     }
 
-    const [result] = await pool.query(
-      `
-      INSERT INTO deskripsi_hotel (
-        id_list_hotel,
-        description,
-        facility,
-        policy
-      )
-      VALUES (?, ?, ?, ?)
-      `,
-      [
-        parseInt(id_list_hotel),
-        description,
-        facility || null,
-        policy || null
-      ]
-    );
+    const result = await insert("deskripsi_hotel", {
+      id_list_hotel: parseInt(id_list_hotel),
+      description,
+      facility: facility || null,
+      policy: policy || null
+    });
 
     return res.status(201).json({
       message: "Deskripsi hotel berhasil ditambahkan.",
-      data: {
-        id_deskripsi_hotel: result.insertId,
-        id_list_hotel: parseInt(id_list_hotel),
-        description,
-        facility: facility || null,
-        policy: policy || null
-      }
+      data: result[0]
     });
   } catch (error) {
     return res.status(500).json({
@@ -86,39 +55,37 @@ export const getHotelDescription = async (req, res) => {
       });
     }
 
-    const [hotelRows] = await pool.query(
-      `
-      SELECT
-        lh.id_list_hotel,
-        lh.id_company_profile,
-        lh.hotel_name,
-        lh.location,
-        lh.contact_person,
-        lh.contact_email,
-        lh.contact_phone,
-        dh.id_deskripsi_hotel,
-        dh.description,
-        dh.facility,
-        dh.policy,
-        dh.created_at,
-        dh.updated_at
-      FROM list_hotel lh
-      LEFT JOIN deskripsi_hotel dh
-        ON lh.id_list_hotel = dh.id_list_hotel
-      WHERE lh.id_list_hotel = ?
-      `,
-      [parseInt(id_list_hotel)]
-    );
+    const idListHotel = parseInt(id_list_hotel);
+    
+    const hotel = await selectOne("list_hotel", { id_list_hotel: idListHotel });
 
-    if (hotelRows.length === 0) {
+    if (!hotel) {
       return res.status(404).json({
         message: "Hotel tidak ditemukan."
       });
     }
 
+    const description = await selectOne("deskripsi_hotel", { id_list_hotel: idListHotel });
+
+    const response = {
+      id_list_hotel: hotel.id_list_hotel,
+      id_company_profile: hotel.id_company_profile,
+      hotel_name: hotel.hotel_name,
+      location: hotel.location,
+      contact_person: hotel.contact_person,
+      contact_email: hotel.contact_email,
+      contact_phone: hotel.contact_phone,
+      id_deskripsi_hotel: description?.id_deskripsi_hotel || null,
+      description: description?.description || null,
+      facility: description?.facility || null,
+      policy: description?.policy || null,
+      created_at: description?.created_at || null,
+      updated_at: description?.updated_at || null
+    };
+
     return res.status(200).json({
       message: "Deskripsi hotel berhasil diambil.",
-      data: hotelRows[0]
+      data: response
     });
   } catch (error) {
     return res.status(500).json({
@@ -145,72 +112,37 @@ export const updateHotelDescription = async (req, res) => {
       });
     }
 
-    const idListHotelNumber = parseInt(id_list_hotel);
+    const idListHotel = parseInt(id_list_hotel);
 
-    const [hotelRows] = await pool.query(
-      `
-      SELECT id_list_hotel
-      FROM list_hotel
-      WHERE id_list_hotel = ?
-      `,
-      [idListHotelNumber]
-    );
+    const hotel = await selectOne("list_hotel", { id_list_hotel: idListHotel });
 
-    if (hotelRows.length === 0) {
+    if (!hotel) {
       return res.status(404).json({
         message: "Hotel tidak ditemukan."
       });
     }
 
-    const [existingRows] = await pool.query(
-      `
-      SELECT id_deskripsi_hotel
-      FROM deskripsi_hotel
-      WHERE id_list_hotel = ?
-      `,
-      [idListHotelNumber]
-    );
+    const existing = await selectOne("deskripsi_hotel", { id_list_hotel: idListHotel });
 
-    if (existingRows.length === 0) {
-      await pool.query(
-        `
-        INSERT INTO deskripsi_hotel (
-          id_list_hotel,
-          description,
-          facility,
-          policy
-        )
-        VALUES (?, ?, ?, ?)
-        `,
-        [
-          idListHotelNumber,
-          description || "",
-          facility || null,
-          policy || null
-        ]
-      );
+    if (!existing) {
+      await insert("deskripsi_hotel", {
+        id_list_hotel: idListHotel,
+        description: description || "",
+        facility: facility || null,
+        policy: policy || null
+      });
 
       return res.status(201).json({
         message: "Deskripsi hotel belum ada, jadi data baru berhasil dibuat."
       });
     }
 
-    await pool.query(
-      `
-      UPDATE deskripsi_hotel
-      SET
-        description = COALESCE(?, description),
-        facility = COALESCE(?, facility),
-        policy = COALESCE(?, policy)
-      WHERE id_list_hotel = ?
-      `,
-      [
-        description || null,
-        facility || null,
-        policy || null,
-        idListHotelNumber
-      ]
-    );
+    const updateData = {};
+    if (description !== undefined) updateData.description = description;
+    if (facility !== undefined) updateData.facility = facility;
+    if (policy !== undefined) updateData.policy = policy;
+
+    await update("deskripsi_hotel", updateData, { id_list_hotel: idListHotel });
 
     return res.status(200).json({
       message: "Deskripsi hotel berhasil diperbarui."

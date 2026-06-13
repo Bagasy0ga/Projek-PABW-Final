@@ -1,4 +1,4 @@
-import pool from '../config/db.js';
+import { select, selectOne, insert, count } from "../utils/queryHelper.js";
 import { successResponse, errorResponse } from "../models/apiResponse.js";
 
 class HotelController {
@@ -16,27 +16,22 @@ class HotelController {
                 });
             }
 
-            const [result] = await pool.query(
-                `INSERT INTO detail_kamar 
-                (type_room, description, facility, capacity) 
-                VALUES (?, ?, ?, ?)`,
-                [type_room, description, facility, capacity]
-            );
+            const result = await insert("detail_kamar", {
+                type_room,
+                description,
+                facility,
+                capacity
+            });
 
-            if (result.affectedRows === 0) {
+            if (!result || result.length === 0) {
                 return errorResponse({
                     message: "Gagal menambahkan deskripsi kamar"
                 });
             }
 
-            const [newRoomDescription] = await pool.query(
-                "SELECT * FROM detail_kamar WHERE id_detail_kamar = ?",
-                [result.insertId]
-            );
-
             return successResponse({
                 message: "Deskripsi kamar berhasil ditambahkan",
-                data: newRoomDescription[0]
+                data: result[0]
             });
         } catch (error) {
             console.error("Error:", error.message);
@@ -55,12 +50,11 @@ class HotelController {
                 });
             }
 
-            const [hotel] = await pool.query(
-                'SELECT * FROM list_hotel WHERE id_list_hotel = ?',
-                [id_list_hotel]
-            );
+            const hotel = await selectOne("list_hotel", { 
+                id_list_hotel: parseInt(id_list_hotel) 
+            });
 
-            if (hotel.length === 0) {
+            if (!hotel) {
                 return errorResponse({
                     message: "Hotel tidak ditemukan"
                 });
@@ -68,7 +62,7 @@ class HotelController {
 
             return successResponse({
                 message: 'Deskripsi hotel ditemukan',
-                data: hotel[0]
+                data: hotel
             });
         } catch (error) {
             console.error("Error:", error.message);
@@ -81,11 +75,11 @@ class HotelController {
     // Mendapatkan semua hotel dengan deskripsi
     static async getAllHotels() {
         try {
-            const [hotels] = await pool.query(
-                `SELECT * FROM list_hotel ORDER BY hotel_name`
-            );
+            const hotels = await select("list_hotel", {
+                order: { column: "hotel_name", ascending: true }
+            });
 
-            if (hotels.length === 0) {
+            if (!hotels || hotels.length === 0) {
                 return errorResponse({
                     message: "Tidak ada hotel ditemukan"
                 });
@@ -112,12 +106,11 @@ class HotelController {
                 });
             }
 
-            const [hotels] = await pool.query(
-                'SELECT * FROM list_hotel WHERE id_company_profile = ?',
-                [id_company_profile]
-            );
+            const hotels = await select("list_hotel", {
+                where: { id_company_profile: parseInt(id_company_profile) }
+            });
 
-            if (hotels.length === 0) {
+            if (!hotels || hotels.length === 0) {
                 return errorResponse({
                     message: "Tidak ada hotel ditemukan untuk perusahaan ini"
                 });

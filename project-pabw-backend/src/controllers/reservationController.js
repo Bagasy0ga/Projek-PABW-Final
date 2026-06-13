@@ -1,4 +1,4 @@
-import pool from "../config/db.js";
+import { callRpc, selectOne, select, count } from '../utils/queryHelper.js';
 
 // GET histori reservasi customer
 export const getCustomerReservationHistory = async (req, res) => {
@@ -11,64 +11,57 @@ export const getCustomerReservationHistory = async (req, res) => {
     }
 
     // Cek customer ada atau tidak
-    const [customerRows] = await pool.query(
-      `SELECT id_user FROM user WHERE id_user = ?`,
-      [parseInt(id_user)]
-    );
-
-    if (customerRows.length === 0) {
+    const customer = await selectOne("user", { id_user: parseInt(id_user) });
+    if (!customer) {
       return res.status(404).json({ message: "Customer tidak ditemukan." });
     }
 
-    let where = "WHERE hp.id_user = ?";
-    const params = [parseInt(id_user)];
-
+    // Build where filters
+    const where = { id_user: parseInt(id_user) };
     if (status) {
-      where += " AND hp.status = ?";
-      params.push(status.toLowerCase());
+      where.status = status.toLowerCase();
     }
 
-    const [reservations] = await pool.query(
-      `SELECT 
-        hp.id_history, hp.purchase_date, hp.checkin_time, hp.checkout_time, hp.amount, hp.status,
-        lk.room_number,
-        lh.id_list_hotel, lh.hotel_name, lh.location,
-        dk.type_room, dk.capacity,
-        cp.company_name
-      FROM history_purchase hp
-      JOIN list_kamar lk ON hp.id_list_kamar = lk.id_list_kamar
-      JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-      JOIN detail_kamar dk ON lk.id_detail_kamar = dk.id_detail_kamar
-      JOIN company_profile cp ON hp.id_company_profile = cp.id_company_profile
-      ${where}
-      ORDER BY hp.purchase_date DESC
-      LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), parseInt(offset)]
+    // Get reservations with pagination
+    const reservations = await select("history_purchase", {
+      where,
+      order: { column: "purchase_date", ascending: false },
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+
+    // Enrich with hotel and room info
+    const enrichedReservations = await Promise.all(
+      reservations.map(async (r) => {
+        const room = await selectOne("list_kamar", { id_list_kamar: r.id_list_kamar });
+        const hotel = await selectOne("list_hotel", { id_list_hotel: room?.id_list_hotel });
+        const roomType = await selectOne("detail_kamar", { id_detail_kamar: room?.id_detail_kamar });
+        const company = await selectOne("company_profile", { id_company_profile: r.id_company_profile });
+        
+        return {
+          id_history: r.id_history,
+          purchase_date: r.purchase_date,
+          checkin_time: r.checkin_time,
+          checkout_time: r.checkout_time,
+          amount: r.amount,
+          status: r.status,
+          room_number: room?.room_number,
+          id_list_hotel: hotel?.id_list_hotel,
+          hotel_name: hotel?.hotel_name,
+          roomType: roomType?.type_room,
+          capacity: roomType?.capacity,
+          hotel_location: hotel?.location,
+          company_name: company?.company_name
+        };
+      })
     );
 
-    const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) as total FROM history_purchase hp ${where}`,
-      params
-    );
+    // Get total count
+    const total = await count("history_purchase", where);
 
     res.json({
       message: "Histori reservasi berhasil diambil",
-      data: reservations.map(r => ({
-        id_history: r.id_history,
-        purchase_date: r.purchase_date,
-        checkin_time: r.checkin_time,
-        checkout_time: r.checkout_time,
-        amount: r.amount,
-        status: r.status,
-        room_number: r.room_number,
-        id_list_hotel: r.id_list_hotel,
-        hotel_name: r.hotel_name,
-        id_list_hotel: r.id_list_hotel,
-        roomType: r.type_room,
-        capacity: r.capacity,
-        hotel_location: r.location,
-        company_name: r.company_name
-      })),
+      data: enrichedReservations,
       pagination: {
         total,
         limit: parseInt(limit),
@@ -90,67 +83,59 @@ export const getReservationDetail = async (req, res) => {
       return res.status(400).json({ message: "Customer ID dan History ID wajib diisi." });
     }
 
-    const [rows] = await pool.query(
-      `SELECT 
-        hp.id_history,hp.id_user, hp.purchase_date, hp.checkin_time, hp.checkout_time, hp.amount, hp.status,
-        c.id_user AS id_user, c.name AS customerName, c.email AS customerEmail, c.phone_number AS customerPhone,
-        lk.id_list_kamar, lk.room_number, lk.price AS roomPrice,
-        dk.type_room, dk.facility, dk.capacity,
-        lh.id_list_hotel, lh.hotel_name, lh.location AS hotel_location, lh.contact_person, lh.contact_email, lh.contact_phone,
-        cp.id_company_profile, cp.company_name, cp.email AS company_email, cp.address AS company_address, cp.phone_number AS companyPhone
-      FROM history_purchase hp
-      JOIN user c ON hp.id_user = c.id_user
-      JOIN list_kamar lk ON hp.id_list_kamar = lk.id_list_kamar
-      JOIN detail_kamar dk ON lk.id_detail_kamar = dk.id_detail_kamar
-      JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-      JOIN company_profile cp ON hp.id_company_profile = cp.id_company_profile
-      WHERE hp.id_history = ? AND hp.id_user = ?`,
-      [parseInt(id_history), parseInt(id_user)]
-    );
+    const reservation = await selectOne("history_purchase", {
+      id_history: parseInt(id_history),
+      id_user: parseInt(id_user)
+    });
 
-    if (rows.length === 0) {
+    if (!reservation) {
       return res.status(404).json({ message: "Reservasi tidak ditemukan." });
     }
 
-    const r = rows[0];
+    // Get related data
+    const customer = await selectOne("user", { id_user: parseInt(id_user) });
+    const room = await selectOne("list_kamar", { id_list_kamar: reservation.id_list_kamar });
+    const roomType = await selectOne("detail_kamar", { id_detail_kamar: room?.id_detail_kamar });
+    const hotel = await selectOne("list_hotel", { id_list_hotel: room?.id_list_hotel });
+    const company = await selectOne("company_profile", { id_company_profile: reservation.id_company_profile });
 
     res.json({
       message: "Detail reservasi berhasil diambil",
       data: {
-        id_history: r.id_history,
-        purchase_date: r.purchase_date,
-        checkin_time: r.checkin_time,
-        checkout_time: r.checkout_time,
-        amount: r.amount,
-        status: r.status,
+        id_history: reservation.id_history,
+        purchase_date: reservation.purchase_date,
+        checkin_time: reservation.checkin_time,
+        checkout_time: reservation.checkout_time,
+        amount: reservation.amount,
+        status: reservation.status,
         customer: {
-          id_user: r.id_user,
-          nama: r.customerName,
-          email: r.customerEmail,
-          nomor_telepon: r.customerPhone
+          id_user: customer?.id_user,
+          nama: customer?.name,
+          email: customer?.email,
+          nomor_telepon: customer?.phone_number
         },
         room: {
-          id_list_kamar: r.id_list_kamar,
-          number: r.room_number,
-          type: r.type_room,
-          facility: r.facility,
-          capacity: r.capacity,
-          price: r.roomPrice
+          id_list_kamar: room?.id_list_kamar,
+          number: room?.room_number,
+          type: roomType?.type_room,
+          facility: roomType?.facility,
+          capacity: roomType?.capacity,
+          price: room?.price
         },
         hotel: {
-          id_list_hotel: r.id_list_hotel,
-          nama: r.hotel_name,
-          location: r.hotel_location,
-          contact_person: r.contact_person,
-          contact_email: r.contact_email,
-          contact_phone: r.contact_phone
+          id_list_hotel: hotel?.id_list_hotel,
+          nama: hotel?.hotel_name,
+          location: hotel?.location,
+          contact_person: hotel?.contact_person,
+          contact_email: hotel?.contact_email,
+          contact_phone: hotel?.contact_phone
         },
         company: {
-          id_company_profile: r.id_company_profile,
-          nama: r.company_name,
-          email: r.company_email,
-          alamat: r.company_address,
-          nomor_telepon: r.companyPhone
+          id_company_profile: company?.id_company_profile,
+          nama: company?.company_name,
+          email: company?.email,
+          alamat: company?.address,
+          nomor_telepon: company?.phone_number
         }
       }
     });
@@ -169,34 +154,26 @@ export const getReservationStats = async (req, res) => {
       return res.status(400).json({ message: "ID User wajib diisi." });
     }
 
-    const [customerRows] = await pool.query(
-      `SELECT id_user FROM user WHERE id_user = ?`,
-      [parseInt(id_user)]
-    );
-
-    if (customerRows.length === 0) {
+    const customer = await selectOne("user", { id_user: parseInt(id_user) });
+    if (!customer) {
       return res.status(404).json({ message: "User tidak ditemukan." });
     }
 
-    const [[stats]] = await pool.query(
-      `SELECT
-        COUNT(*) AS totalReservasi,
-        COALESCE(SUM(amount), 0) AS totalBiaya,
-        SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) AS confirmed,
-        SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) AS cancelled
-      FROM history_purchase
-      WHERE id_user = ?`,
-      [parseInt(id_user)]
-    );
+    // Get all reservations for stats
+    const reservations = await select("history_purchase", {
+      where: { id_user: parseInt(id_user) }
+    });
+
+    const stats = {
+      totalReservasi: reservations.length,
+      totalBiaya: reservations.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0),
+      confirmed: reservations.filter(r => r.status === 'confirmed').length,
+      cancelled: reservations.filter(r => r.status === 'cancelled').length
+    };
 
     res.json({
       message: "Statistik reservasi berhasil diambil",
-      data: {
-        totalReservasi: stats.totalReservasi,
-        totalBiaya: parseFloat(stats.totalBiaya),
-        confirmed: stats.confirmed,
-        cancelled: stats.cancelled
-      }
+      data: stats
     });
 
   } catch (error) {
@@ -208,119 +185,85 @@ export const getReservationStats = async (req, res) => {
 export const getMitraReservationHistory = async (req, res) => {
   try {
     const { id_company_profile } = req.params;
-    const {
-      status,
-      id_list_hotel,
-      limit = 10,
-      offset = 0
-    } = req.query;
+    const { status, id_list_hotel, limit = 10, offset = 0 } = req.query;
 
     if (!id_company_profile) {
-      return res.status(400).json({
-        message: "ID Company Profile wajib diisi."
-      });
+      return res.status(400).json({ message: "ID Company Profile wajib diisi." });
     }
 
     const idCompanyProfileNumber = parseInt(id_company_profile);
     const limitNumber = parseInt(limit);
     const offsetNumber = parseInt(offset);
 
-    const [mitraRows] = await pool.query(
-      `
-      SELECT id_company_profile
-      FROM company_profile
-      WHERE id_company_profile = ?
-      `,
-      [idCompanyProfileNumber]
-    );
-
-    if (mitraRows.length === 0) {
-      return res.status(404).json({
-        message: "Mitra tidak ditemukan."
-      });
+    // Check mitra exists
+    const mitra = await selectOne("company_profile", { id_company_profile: idCompanyProfileNumber });
+    if (!mitra) {
+      return res.status(404).json({ message: "Mitra tidak ditemukan." });
     }
 
-    let where = "WHERE hp.id_company_profile = ?";
-    const params = [idCompanyProfileNumber];
-
+    // Build where filters
+    const where = { id_company_profile: idCompanyProfileNumber };
     if (status) {
-      where += " AND hp.status = ?";
-      params.push(status.toLowerCase());
+      where.status = status.toLowerCase();
     }
 
-    if (id_list_hotel) {
-      where += " AND lh.id_list_hotel = ?";
-      params.push(parseInt(id_list_hotel));
-    }
+    // Get reservations
+    const reservations = await select("history_purchase", {
+      where,
+      order: { column: "purchase_date", ascending: false },
+      limit: limitNumber,
+      offset: offsetNumber
+    });
 
-    const [reservations] = await pool.query(
-      `
-      SELECT 
-        hp.id_history,
-        hp.purchase_date,
-        hp.checkin_time,
-        hp.checkout_time,
-        hp.amount,
-        hp.status,
-        lk.id_list_kamar,
-        lk.room_number,
-        lh.id_list_hotel,
-        lh.hotel_name,
-        lh.location AS hotel_location,
-        dk.type_room,
-        dk.capacity,
-        c.id_user,
-        c.name AS customerName,
-        c.email AS customerEmail
-      FROM history_purchase hp
-      JOIN list_kamar lk ON hp.id_list_kamar = lk.id_list_kamar
-      JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-      JOIN detail_kamar dk ON lk.id_detail_kamar = dk.id_detail_kamar
-      JOIN user c ON hp.id_user = c.id_user
-      ${where}
-      ORDER BY hp.purchase_date DESC
-      LIMIT ? OFFSET ?
-      `,
-      [...params, limitNumber, offsetNumber]
+    // Enrich with room/hotel data
+    const enrichedReservations = await Promise.all(
+      reservations.map(async (r) => {
+        const room = await selectOne("list_kamar", { id_list_kamar: r.id_list_kamar });
+        const hotel = await selectOne("list_hotel", { id_list_hotel: room?.id_list_hotel });
+        
+        // Filter by hotel if specified
+        if (id_list_hotel && hotel?.id_list_hotel != id_list_hotel) {
+          return null;
+        }
+
+        const roomType = await selectOne("detail_kamar", { id_detail_kamar: room?.id_detail_kamar });
+        const customer = await selectOne("user", { id_user: r.id_user });
+
+        return {
+          id_history: r.id_history,
+          purchase_date: r.purchase_date,
+          checkin_time: r.checkin_time,
+          checkout_time: r.checkout_time,
+          amount: r.amount,
+          status: r.status,
+          id_list_hotel: hotel?.id_list_hotel,
+          hotel_name: hotel?.hotel_name,
+          hotel_location: hotel?.location,
+          id_list_kamar: room?.id_list_kamar,
+          room_number: room?.room_number,
+          roomType: roomType?.type_room,
+          capacity: roomType?.capacity,
+          id_user: customer?.id_user,
+          customerName: customer?.name,
+          customerEmail: customer?.email
+        };
+      })
     );
 
-    const [[{ total }]] = await pool.query(
-      `
-      SELECT COUNT(*) AS total
-      FROM history_purchase hp
-      JOIN list_kamar lk ON hp.id_list_kamar = lk.id_list_kamar
-      JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-      ${where}
-      `,
-      params
-    );
+    // Filter out nulls and get final count
+    const filtered = enrichedReservations.filter(r => r !== null);
+    const total = filtered.length;
 
-    return res.json({
+    res.json({
       message: "Histori reservasi mitra berhasil diambil",
-      data: reservations.map((r) => ({
-        id_history: r.id_history,
-        purchase_date: r.purchase_date,
-        checkin_time: r.checkin_time,
-        checkout_time: r.checkout_time,
-        amount: r.amount,
-        status: r.status,
-        id_list_hotel: r.id_list_hotel,
-        hotel_name: r.hotel_name,
-        hotel_location: r.hotel_location,
-        id_list_kamar: r.id_list_kamar,
-        room_number: r.room_number,
-        roomType: r.type_room,
-        capacity: r.capacity,
-        id_user: r.id_user,
-        customerName: r.customerName,
-        customerEmail: r.customerEmail
-      })),
+      data: filtered,
       pagination: {
         total,
         limit: limitNumber,
         offset: offsetNumber
       }
     });
+
   } catch (error) {
     return res.status(500).json({
       message: "Terjadi kesalahan saat mengambil histori reservasi mitra.",
@@ -334,68 +277,64 @@ export const getAllReservations = async (req, res) => {
   try {
     const { status, id_user, id_company_profile, limit = 10, offset = 0 } = req.query;
 
-    let where = "WHERE 1=1";
-    const params = [];
-
+    // Build where filters
+    const where = {};
     if (status) {
-      where += " AND hp.status = ?";
-      params.push(status.toUpperCase());
+      where.status = status.toLowerCase();
     }
     if (id_user) {
-      where += " AND hp.id_user = ?";
-      params.push(parseInt(id_user));
+      where.id_user = parseInt(id_user);
     }
     if (id_company_profile) {
-      where += " AND hp.id_company_profile = ?";
-      params.push(parseInt(id_company_profile));
+      where.id_company_profile = parseInt(id_company_profile);
     }
 
     const limitVal = parseInt(limit);
     const offsetVal = parseInt(offset);
 
-    const [reservations] = await pool.query(
-      `SELECT 
-        hp.id_history, hp.purchase_date, hp.checkin_time, hp.checkout_time, hp.amount, hp.status,
-        lk.room_number,
-        lh.id_list_hotel, lh.hotel_name, lh.location AS hotel_location,
-        dk.type_room,
-        c.name AS user_name, c.email AS user_email,
-        cp.company_name AS mitra_name, cp.email AS mitra_email
-      FROM history_purchase hp
-      JOIN list_kamar lk ON hp.id_list_kamar = lk.id_list_kamar
-      JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-      JOIN detail_kamar dk ON lk.id_detail_kamar = dk.id_detail_kamar
-      JOIN user c ON hp.id_user = c.id_user
-      JOIN company_profile cp ON hp.id_company_profile = cp.id_company_profile
-      ${where}
-      ORDER BY hp.purchase_date DESC LIMIT ? OFFSET ?`,
-      [...params, limitVal, offsetVal]
+    // Get reservations
+    const reservations = await select("history_purchase", {
+      where,
+      order: { column: "purchase_date", ascending: false },
+      limit: limitVal,
+      offset: offsetVal
+    });
+
+    // Enrich with all related data
+    const enrichedReservations = await Promise.all(
+      reservations.map(async (r) => {
+        const room = await selectOne("list_kamar", { id_list_kamar: r.id_list_kamar });
+        const hotel = await selectOne("list_hotel", { id_list_hotel: room?.id_list_hotel });
+        const roomType = await selectOne("detail_kamar", { id_detail_kamar: room?.id_detail_kamar });
+        const user = await selectOne("user", { id_user: r.id_user });
+        const company = await selectOne("company_profile", { id_company_profile: r.id_company_profile });
+
+        return {
+          id_history: r.id_history,
+          purchase_date: r.purchase_date,
+          checkin_time: r.checkin_time,
+          checkout_time: r.checkout_time,
+          amount: r.amount,
+          status: r.status,
+          room_number: room?.room_number,
+          id_list_hotel: hotel?.id_list_hotel,
+          hotel_name: hotel?.hotel_name,
+          type_room: roomType?.type_room,
+          hotel_location: hotel?.location,
+          user_name: user?.name,
+          user_email: user?.email,
+          mitra_name: company?.company_name,
+          mitra_email: company?.email
+        };
+      })
     );
 
-    const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) as total FROM history_purchase hp ${where}`,
-      params
-    );
+    // Get total count
+    const total = await count("history_purchase", where);
 
     res.json({
       message: "Semua reservasi berhasil diambil",
-      data: reservations.map(r => ({
-        id_history: r.id_history,
-        purchase_date: r.purchase_date,
-        checkin_time: r.checkin_time,
-        checkout_time: r.checkout_time,
-        amount: r.amount,
-        status: r.status,
-        room_number: r.room_number,
-        id_list_hotel: r.id_list_hotel,
-        hotel_name: r.hotel_name,
-        type_room: r.type_room,
-        hotel_location: r.hotel_location,
-        user_name: r.user_name,
-        user_email: r.user_email,
-        mitra_name: r.mitra_name,
-        mitra_email: r.mitra_email
-      })),
+      data: enrichedReservations,
       pagination: {
         total,
         limit: limitVal,
@@ -408,10 +347,8 @@ export const getAllReservations = async (req, res) => {
   }
 };
 
-// UC6 Memesan Kamar Hotel
+// UC6 Memesan Kamar Hotel - menggunakan RPC function
 export const createReservation = async (req, res) => {
-  const connection = await pool.getConnection();
-
   try {
     const {
       id_user,
@@ -429,230 +366,41 @@ export const createReservation = async (req, res) => {
       });
     }
 
-    const requestedRoomCount = parseInt(jumlah_kamar);
+    // Call RPC function create_reservation
+    const result = await callRpc("create_reservation", {
+      p_id_user: parseInt(id_user),
+      p_id_list_hotel: id_list_hotel ? parseInt(id_list_hotel) : null,
+      p_id_detail_kamar: id_detail_kamar ? parseInt(id_detail_kamar) : null,
+      p_id_list_kamar: id_list_kamar ? parseInt(id_list_kamar) : null,
+      p_jumlah_kamar: parseInt(jumlah_kamar),
+      p_checkin_time: new Date(checkin_time).toISOString(),
+      p_checkout_time: new Date(checkout_time).toISOString()
+    });
 
-    if (!Number.isInteger(requestedRoomCount) || requestedRoomCount < 1) {
+    if (!result || result.length === 0) {
+      return res.status(500).json({
+        message: "Gagal membuat reservasi"
+      });
+    }
+
+    const response = result[0];
+
+    if (!response.success) {
       return res.status(400).json({
-        message: "jumlah_kamar minimal 1."
+        status: "error",
+        message: response.message
       });
     }
 
-    const isGroupedBooking = id_list_hotel && id_detail_kamar;
-
-    if (!isGroupedBooking && !id_list_kamar) {
-      return res.status(400).json({
-        message: "id_list_kamar atau kombinasi id_list_hotel dan id_detail_kamar wajib diisi."
-      });
-    }
-
-    const checkinDate = new Date(checkin_time);
-    const checkoutDate = new Date(checkout_time);
-
-    if (isNaN(checkinDate.getTime()) || isNaN(checkoutDate.getTime())) {
-      return res.status(400).json({
-        message: "Format checkin_time atau checkout_time tidak valid."
-      });
-    }
-
-    if (checkoutDate <= checkinDate) {
-      return res.status(400).json({
-        message: "checkout_time harus lebih besar dari checkin_time."
-      });
-    }
-
-    await connection.beginTransaction();
-
-    const [userRows] = await connection.query(
-      `SELECT id_user, name, email FROM user WHERE id_user = ?`,
-      [parseInt(id_user)]
-    );
-
-    if (userRows.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({
-        message: "User tidak ditemukan."
-      });
-    }
-
-    let roomRows = [];
-
-    if (isGroupedBooking) {
-      const [rows] = await connection.query(
-        `
-        SELECT
-          lk.id_list_kamar,
-          lk.room_number,
-          lk.price,
-          lk.status,
-          lk.id_detail_kamar,
-
-          lh.id_list_hotel,
-          lh.id_company_profile,
-          lh.hotel_name,
-          lh.location,
-
-          dk.type_room,
-          dk.capacity
-        FROM list_kamar lk
-        JOIN list_hotel lh
-          ON lk.id_list_hotel = lh.id_list_hotel
-        JOIN detail_kamar dk
-          ON lk.id_detail_kamar = dk.id_detail_kamar
-        WHERE lk.id_list_hotel = ?
-          AND lk.id_detail_kamar = ?
-          AND lk.status = 'available'
-        ORDER BY lk.room_number ASC
-        LIMIT ?
-        FOR UPDATE
-        `,
-        [
-          parseInt(id_list_hotel),
-          parseInt(id_detail_kamar),
-          requestedRoomCount
-        ]
-      );
-
-      roomRows = rows;
-
-      if (roomRows.length < requestedRoomCount) {
-        await connection.rollback();
-        return res.status(409).json({
-          message: `Kamar tersedia tidak cukup. Diminta ${requestedRoomCount}, tersedia ${roomRows.length}.`
-        });
-      }
-    } else {
-      const [rows] = await connection.query(
-        `
-        SELECT
-          lk.id_list_kamar,
-          lk.room_number,
-          lk.price,
-          lk.status,
-          lk.id_detail_kamar,
-
-          lh.id_list_hotel,
-          lh.id_company_profile,
-          lh.hotel_name,
-          lh.location,
-
-          dk.type_room,
-          dk.capacity
-        FROM list_kamar lk
-        JOIN list_hotel lh
-          ON lk.id_list_hotel = lh.id_list_hotel
-        JOIN detail_kamar dk
-          ON lk.id_detail_kamar = dk.id_detail_kamar
-        WHERE lk.id_list_kamar = ?
-        FOR UPDATE
-        `,
-        [parseInt(id_list_kamar)]
-      );
-
-      if (rows.length === 0) {
-        await connection.rollback();
-        return res.status(404).json({
-          message: "Kamar tidak ditemukan."
-        });
-      }
-
-      if (rows[0].status !== "available") {
-        await connection.rollback();
-        return res.status(409).json({
-          message: "Kamar tidak tersedia untuk dipesan."
-        });
-      }
-
-      roomRows = rows;
-    }
-
-    const oneDayMs = 1000 * 60 * 60 * 24;
-    const totalDays = Math.max(1, Math.ceil((checkoutDate - checkinDate) / oneDayMs));
-
-    const formatMysqlDateTime = (date) => {
-      return date.toISOString().slice(0, 19).replace("T", " ");
-    };
-
-    const checkinMysql = formatMysqlDateTime(checkinDate);
-    const checkoutMysql = formatMysqlDateTime(checkoutDate);
-
-    const historyIds = [];
-    let totalAmount = 0;
-
-    for (const room of roomRows) {
-      const amount = parseFloat(room.price) * totalDays;
-      totalAmount += amount;
-
-      const [insertResult] = await connection.query(
-        `
-        INSERT INTO history_purchase
-          (id_user, id_company_profile, id_list_kamar, purchase_date, checkin_time, checkout_time, amount, status)
-        VALUES
-          (?, ?, ?, NOW(), ?, ?, ?, 'confirmed')
-        `,
-        [
-          parseInt(id_user),
-          room.id_company_profile,
-          room.id_list_kamar,
-          checkinMysql,
-          checkoutMysql,
-          amount
-        ]
-      );
-
-      historyIds.push(insertResult.insertId);
-    }
-
-    const roomIds = roomRows.map(room => room.id_list_kamar);
-    const placeholders = roomIds.map(() => "?").join(",");
-
-    await connection.query(
-      `
-      UPDATE list_kamar
-      SET status = 'not available'
-      WHERE id_list_kamar IN (${placeholders})
-      `,
-      roomIds
-    );
-
-    await connection.commit();
-
-    const firstRoom = roomRows[0];
+    const data = JSON.parse(response.data);
 
     res.status(201).json({
       message: "Reservasi kamar berhasil dibuat",
-      data: {
-        id_history: historyIds[0],
-        history_ids: historyIds,
-
-        id_user: parseInt(id_user),
-        id_list_hotel: firstRoom.id_list_hotel,
-        id_detail_kamar: firstRoom.id_detail_kamar,
-
-        hotel_name: firstRoom.hotel_name,
-        location: firstRoom.location,
-        type_room: firstRoom.type_room,
-        capacity: firstRoom.capacity,
-
-        jumlah_kamar: roomRows.length,
-        reserved_rooms: roomRows.map(room => ({
-          id_list_kamar: room.id_list_kamar,
-          room_number: room.room_number,
-          price: room.price
-        })),
-
-        checkin_time: checkinMysql,
-        checkout_time: checkoutMysql,
-        total_malam: totalDays,
-        total_amount: totalAmount,
-        amount: totalAmount,
-        status: "confirmed"
-      }
+      data
     });
 
   } catch (error) {
-    await connection.rollback();
+    console.error("Error:", error.message);
     res.status(500).json({ error: error.message });
-  } finally {
-    connection.release();
   }
 };

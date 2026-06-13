@@ -1,4 +1,4 @@
-import mysql from "mysql2/promise";
+import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -8,7 +8,7 @@ const __dirname = dirname(__filename);
 
 dotenv.config({ path: resolve(__dirname, "../../.env") });
 
-const requiredEnv = ["DB_HOST", "DB_USER", "DB_NAME"];
+const requiredEnv = ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"];
 
 for (const key of requiredEnv) {
   if (!process.env[key]) {
@@ -16,24 +16,16 @@ for (const key of requiredEnv) {
   }
 }
 
-const useSsl = String(process.env.DB_SSL || "false").toLowerCase() === "true";
+// Inisialisasi Supabase client dengan Service Role Key (untuk backend/server)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  }
+);
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME,
-
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-
-  ssl: useSsl
-    ? {
-        rejectUnauthorized: false
-      }
-    : undefined
-});
-
-export default pool;
+export default supabase;

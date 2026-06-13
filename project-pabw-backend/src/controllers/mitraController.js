@@ -1,4 +1,4 @@
-import pool from "../config/db.js";
+import { selectOne, select, update } from "../utils/queryHelper.js";
 
 // UC14 - Mengubah Deskripsi Hotel
 export const updateHotelDescription = async (req, res) => {
@@ -11,18 +11,14 @@ export const updateHotelDescription = async (req, res) => {
     }
 
     // Cek hotel ada
-    const [hotelRows] = await pool.query(
-      `SELECT id_list_hotel, id_company_profile, hotel_name, location, contact_person, contact_email, contact_phone
-       FROM list_hotel WHERE id_list_hotel = ?`,
-      [parseInt(id_list_hotel)]
-    );
+    const hotel = await selectOne("list_hotel", { id_list_hotel: parseInt(id_list_hotel) });
 
-    if (hotelRows.length === 0) {
+    if (!hotel) {
       return res.status(404).json({ message: "Hotel tidak ditemukan." });
     }
 
     // Cek hotel milik mitra ini
-    if (hotelRows[0].id_company_profile !== parseInt(id_company_profile)) {
+    if (hotel.id_company_profile !== parseInt(id_company_profile)) {
       return res.status(403).json({ message: "Anda tidak memiliki akses untuk mengubah hotel ini." });
     }
 
@@ -30,33 +26,20 @@ export const updateHotelDescription = async (req, res) => {
       return res.status(400).json({ message: "Minimal satu field harus diisi untuk diperbarui." });
     }
 
-    const hotel = hotelRows[0];
-    const newHotelName     = hotel_name      ? hotel_name.trim()      : hotel.hotel_name;
-    const newLocation      = location        ? location.trim()        : hotel.location;
-    const newContactPerson = contact_person  ? contact_person.trim()  : hotel.contact_person;
-    const newContactEmail  = contact_email   ? contact_email.trim()   : hotel.contact_email;
-    const newContactPhone  = contact_phone   ? contact_phone.trim()   : hotel.contact_phone;
+    const updateData = {};
+    if (hotel_name) updateData.hotel_name = hotel_name.trim();
+    if (location) updateData.location = location.trim();
+    if (contact_person) updateData.contact_person = contact_person.trim();
+    if (contact_email) updateData.contact_email = contact_email.trim();
+    if (contact_phone) updateData.contact_phone = contact_phone.trim();
 
-    await pool.query(
-      `UPDATE list_hotel
-       SET hotel_name = ?, location = ?, contact_person = ?, contact_email = ?, contact_phone = ?
-       WHERE id_list_hotel = ?`,
-      [newHotelName, newLocation, newContactPerson, newContactEmail, newContactPhone, parseInt(id_list_hotel)]
-    );
+    await update("list_hotel", updateData, { id_list_hotel: parseInt(id_list_hotel) });
 
-    const [updated] = await pool.query(
-      `SELECT lh.id_list_hotel, lh.hotel_name, lh.location, lh.contact_person, lh.contact_email, lh.contact_phone,
-              cp.company_name
-       FROM list_hotel lh
-       JOIN company_profile cp ON lh.id_company_profile = cp.id_company_profile
-       WHERE lh.id_list_hotel = ?`,
-      [parseInt(id_list_hotel)]
-    );
-
+    const updated = await selectOne("list_hotel", { id_list_hotel: parseInt(id_list_hotel) });
 
     res.json({
       message: "Deskripsi hotel berhasil diperbarui",
-      data: updated[0]
+      data: updated
     });
 
   } catch (error) {
@@ -75,26 +58,32 @@ export const updateRoomCategory = async (req, res) => {
     }
 
     // Cek detail_kamar ada
-    const [detailRows] = await pool.query(
-      `SELECT id_detail_kamar, type_room, description, facility, capacity
-       FROM detail_kamar WHERE id_detail_kamar = ?`,
-      [parseInt(id_detail_kamar)]
-    );
+    const detail = await selectOne("detail_kamar", { id_detail_kamar: parseInt(id_detail_kamar) });
 
-    if (detailRows.length === 0) {
+    if (!detail) {
       return res.status(404).json({ message: "Kategori kamar tidak ditemukan." });
     }
 
     // Cek kategori kamar ini dipakai oleh hotel milik mitra
-    const [ownerCheck] = await pool.query(
-      `SELECT DISTINCT lh.id_company_profile
-       FROM list_kamar lk
-       JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-       WHERE lk.id_detail_kamar = ? AND lh.id_company_profile = ?`,
-      [parseInt(id_detail_kamar), parseInt(id_company_profile)]
-    );
+    const roomsOfMitra = await select("list_kamar", {
+      where: {
+        id_detail_kamar: parseInt(id_detail_kamar)
+      }
+    });
 
-    if (ownerCheck.length === 0) {
+    // Verify ownership through hotels
+    let hasAccess = false;
+    if (roomsOfMitra.length > 0) {
+      for (const room of roomsOfMitra) {
+        const hotel = await selectOne("list_hotel", { id_list_hotel: room.id_list_hotel });
+        if (hotel && hotel.id_company_profile === parseInt(id_company_profile)) {
+          hasAccess = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasAccess) {
       return res.status(403).json({ message: "Anda tidak memiliki akses untuk mengubah kategori kamar ini." });
     }
 
@@ -106,34 +95,28 @@ export const updateRoomCategory = async (req, res) => {
       return res.status(400).json({ message: "Kapasitas harus berupa angka positif." });
     }
 
-    const detail = detailRows[0];
-    const newTypeRoom    = type_room    ? type_room.trim()   : detail.type_room;
-    const newDescription = description ? description.trim() : detail.description;
-    const newFacility    = facility     ? facility.trim()    : detail.facility;
-    const newCapacity    = capacity !== undefined ? parseInt(capacity) : detail.capacity;
+    const updateData = {};
+    if (type_room) updateData.type_room = type_room.trim();
+    if (description) updateData.description = description.trim();
+    if (facility) updateData.facility = facility.trim();
+    if (capacity !== undefined) updateData.capacity = parseInt(capacity);
 
-    await pool.query(
-      `UPDATE detail_kamar
-       SET type_room = ?, description = ?, facility = ?, capacity = ?
-       WHERE id_detail_kamar = ?`,
-      [newTypeRoom, newDescription, newFacility, newCapacity, parseInt(id_detail_kamar)]
-    );
+    await update("detail_kamar", updateData, { id_detail_kamar: parseInt(id_detail_kamar) });
 
-    const [updated] = await pool.query(
-      `SELECT id_detail_kamar, type_room, description, facility, capacity
-       FROM detail_kamar WHERE id_detail_kamar = ?`,
-      [parseInt(id_detail_kamar)]
-    );
+    const updated = await selectOne("detail_kamar", { id_detail_kamar: parseInt(id_detail_kamar) });
 
     res.json({
       message: "Kategori kamar berhasil diperbarui",
-      data: updated[0]
+      data: updated
     });
 
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+
+// UC16 - Mengubah Status Kamar
+export const updateRoomStatus = async (req, res) => {
 
 // UC16 - Mengubah Status Kamar
 export const updateRoomStatus = async (req, res) => {
@@ -157,25 +140,16 @@ export const updateRoomStatus = async (req, res) => {
     }
 
     // Cek kamar ada
-    const [roomRows] = await pool.query(
-      `SELECT lk.id_list_kamar, lk.room_number, lk.status, lk.price,
-              lh.id_company_profile, lh.hotel_name,
-              dk.type_room
-       FROM list_kamar lk
-       JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-       JOIN detail_kamar dk ON lk.id_detail_kamar = dk.id_detail_kamar
-       WHERE lk.id_list_kamar = ?`,
-      [parseInt(id_list_kamar)]
-    );
+    const room = await selectOne("list_kamar", { id_list_kamar: parseInt(id_list_kamar) });
 
-    if (roomRows.length === 0) {
+    if (!room) {
       return res.status(404).json({ message: "Kamar tidak ditemukan." });
     }
 
-    const room = roomRows[0];
+    const hotel = await selectOne("list_hotel", { id_list_hotel: room.id_list_hotel });
 
     // Cek kamar milik mitra ini
-    if (room.id_company_profile !== parseInt(id_company_profile)) {
+    if (!hotel || hotel.id_company_profile !== parseInt(id_company_profile)) {
       return res.status(403).json({ message: "Anda tidak memiliki akses untuk mengubah status kamar ini." });
     }
 
@@ -183,18 +157,14 @@ export const updateRoomStatus = async (req, res) => {
       return res.status(400).json({ message: `Status kamar sudah '${normalizedStatus}', tidak ada perubahan.` });
     }
 
-    await pool.query(
-      `UPDATE list_kamar SET status = ? WHERE id_list_kamar = ?`,
-      [normalizedStatus, parseInt(id_list_kamar)]
-    );
+    await update("list_kamar", { status: normalizedStatus }, { id_list_kamar: parseInt(id_list_kamar) });
 
     res.json({
       message: "Status kamar berhasil diperbarui",
       data: {
         id_list_kamar: parseInt(id_list_kamar),
         room_number: room.room_number,
-        hotel_name: room.hotel_name,
-        type_room: room.type_room,
+        hotel_name: hotel.hotel_name,
         price: room.price,
         old_status: room.status,
         new_status: normalizedStatus
@@ -209,45 +179,34 @@ export const updateRoomStatus = async (req, res) => {
 // GET semua mitra (untuk admin)
 export const getAllMitra = async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT
-        cp.id_company_profile,
-        cp.company_name,
-        cp.address,
-        cp.phone_number,
-        cp.email,
-        cp.username,
-        lh.hotel_name
-      FROM company_profile cp
-      LEFT JOIN list_hotel lh ON lh.id_company_profile = cp.id_company_profile
-      ORDER BY cp.company_name ASC`
-    );
+    const companies = await select("company_profile", {
+      order: { column: "company_name", ascending: true }
+    });
 
-    const mitraMap = new Map();
+    const mitraData = [];
 
-    for (const row of rows) {
-      if (!mitraMap.has(row.id_company_profile)) {
-        mitraMap.set(row.id_company_profile, {
-          id_company_profile: row.id_company_profile,
-          company_name: row.company_name,
-          address: row.address,
-          phone_number: row.phone_number,
-          email: row.email,
-          username: row.username,
-          hotel_name: row.hotel_name || row.company_name
-        });
-      } else if (!mitraMap.get(row.id_company_profile).hotel_name && row.hotel_name) {
-        mitraMap.get(row.id_company_profile).hotel_name = row.hotel_name;
-      }
+    for (const company of companies) {
+      const hotel = await selectOne("list_hotel", { id_company_profile: company.id_company_profile });
+
+      mitraData.push({
+        id_company_profile: company.id_company_profile,
+        company_name: company.company_name,
+        address: company.address,
+        phone_number: company.phone_number,
+        email: company.email,
+        username: company.username,
+        hotel_name: hotel?.hotel_name || company.company_name
+      });
     }
 
     res.json({
       message: "Daftar mitra berhasil diambil",
-      data: Array.from(mitraMap.values())
+      data: mitraData
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+};
 };
 
 // UC11 Menambahkan Mitra

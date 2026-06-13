@@ -1,4 +1,4 @@
-import pool from "../config/db.js";
+import { selectOne, select, callRpc } from "../utils/queryHelper.js";
 
 // UC9 Memberikan Rating ke Hotel
 export const createHotelRating = async (req, res) => {
@@ -48,34 +48,29 @@ export const createHotelRating = async (req, res) => {
       });
     }
 
-    const [reservationRows] = await pool.query(
-      `
-      SELECT
-        hp.id_history,
-        hp.id_user,
-        hp.status,
-        lh.id_list_hotel,
-        lh.hotel_name
-      FROM history_purchase hp
-      JOIN list_kamar lk
-        ON hp.id_list_kamar = lk.id_list_kamar
-      JOIN list_hotel lh
-        ON lk.id_list_hotel = lh.id_list_hotel
-      WHERE hp.id_history = ?
-        AND hp.id_user = ?
-        AND lh.id_list_hotel = ?
-      LIMIT 1
-      `,
-      [historyId, userId, hotelId]
-    );
+    // Verify reservation exists
+    const reservation = await selectOne("history_purchase", {
+      id_history: historyId,
+      id_user: userId
+    });
 
-    if (reservationRows.length === 0) {
+    if (!reservation) {
       return res.status(403).json({
         message: "Rating hanya bisa diberikan oleh customer yang memiliki reservasi valid pada hotel tersebut."
       });
     }
 
-    const reservation = reservationRows[0];
+    // Check if reservation is from the correct hotel
+    const room = await selectOne("list_kamar", {
+      id_list_kamar: reservation.id_list_kamar
+    });
+
+    if (!room || room.id_list_hotel !== hotelId) {
+      return res.status(403).json({
+        message: "Rating hanya bisa diberikan oleh customer yang memiliki reservasi valid pada hotel tersebut."
+      });
+    }
+
     const reservationStatus = String(reservation.status || "").toLowerCase().trim();
 
     if (reservationStatus !== "checkout") {
@@ -84,53 +79,24 @@ export const createHotelRating = async (req, res) => {
       });
     }
 
-    await pool.query(
-      `
-      INSERT INTO hotel_rating
-        (id_user, id_list_hotel, id_history, rating, review)
-      VALUES
-        (?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        rating = VALUES(rating),
-        review = VALUES(review),
-        updated_at = NOW()
-      `,
-      [
-        userId,
-        hotelId,
-        historyId,
-        ratingValue,
-        review ? String(review).trim() : null
-      ]
-    );
+    // Call RPC function untuk insert/update rating
+    const result = await callRpc("insert_or_update_hotel_rating", {
+      p_id_user: userId,
+      p_id_list_hotel: hotelId,
+      p_id_history: historyId,
+      p_rating: ratingValue,
+      p_review: review ? String(review).trim() : null
+    });
 
-    const [ratingRows] = await pool.query(
-      `
-      SELECT
-        hr.id_rating,
-        hr.id_user,
-        u.name AS customer_name,
-        hr.id_list_hotel,
-        lh.hotel_name,
-        hr.id_history,
-        hr.rating,
-        hr.review,
-        hr.created_at,
-        hr.updated_at
-      FROM hotel_rating hr
-      JOIN user u
-        ON hr.id_user = u.id_user
-      JOIN list_hotel lh
-        ON hr.id_list_hotel = lh.id_list_hotel
-      WHERE hr.id_history = ?
-      LIMIT 1
-      `,
-      [historyId]
-    );
+    if (!result || result.length === 0) {
+      return res.status(500).json({
+        error: "Gagal menyimpan rating"
+      });
+    }
 
     return res.status(201).json({
       message: "Rating hotel berhasil disimpan",
-      data: ratingRows[0]
+      data: result[0]
     });
 
   } catch (error) {
@@ -165,50 +131,41 @@ export const getHotelRatings = async (req, res) => {
     const safeLimit = Number.isInteger(limitVal) && limitVal > 0 ? limitVal : 20;
     const safeOffset = Number.isInteger(offsetVal) && offsetVal >= 0 ? offsetVal : 0;
 
-    const [[summary]] = await pool.query(
-      `
-      SELECT
-        COUNT(*) AS total_rating,
-        COALESCE(AVG(rating), 0) AS rata_rata_rating
-      FROM hotel_rating
-      WHERE id_list_hotel = ?
-      `,
-      [hotelId]
-    );
+    // Call RPC function
+    const result = await callRpc("get_hotel_ratings", {
+      p_id_list_hotel: hotelId,
+      p_limit: safeLimit,
+      p_offset: safeOffset
+    });
 
-    const [ratings] = await pool.query(
-      `
-      SELECT
-        hr.id_rating,
-        hr.id_user,
-        u.name AS customer_name,
-        hr.id_list_hotel,
-        lh.hotel_name,
-        hr.id_history,
-        hr.rating,
-        hr.review,
-        hr.created_at,
-        hr.updated_at
-      FROM hotel_rating hr
-      JOIN user u
-        ON hr.id_user = u.id_user
-      JOIN list_hotel lh
-        ON hr.id_list_hotel = lh.id_list_hotel
-      WHERE hr.id_list_hotel = ?
-      ORDER BY hr.created_at DESC
-      LIMIT ? OFFSET ?
-      `,
-      [hotelId, safeLimit, safeOffset]
-    );
+    if (!result || result.length === 0) {
+      return res.json({
+        message: "Rating hotel berhasil diambil",
+        data: {
+          summary: {
+            total_rating: 0,
+            rata_rata_rating: 0
+          },
+          ratings: []
+        },
+        pagination: {
+          limit: safeLimit,
+          offset: safeOffset
+        }
+      });
+    }
+
+    const data = result[0];
+    const ratings = data.ratings ? JSON.parse(data.ratings) : [];
 
     return res.json({
       message: "Rating hotel berhasil diambil",
       data: {
         summary: {
-          total_rating: Number(summary.total_rating) || 0,
-          rata_rata_rating: parseFloat(summary.rata_rata_rating) || 0
+          total_rating: Number(data.total_rating) || 0,
+          rata_rata_rating: parseFloat(data.rata_rata_rating) || 0
         },
-        ratings
+        ratings: ratings
       },
       pagination: {
         limit: safeLimit,
