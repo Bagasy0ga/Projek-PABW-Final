@@ -1,4 +1,4 @@
-import { selectOne, select, update } from "../utils/queryHelper.js";
+import * as queryHelper from "../utils/queryHelper.js";
 
 // UC14 - Mengubah Deskripsi Hotel
 export const updateHotelDescription = async (req, res) => {
@@ -11,7 +11,7 @@ export const updateHotelDescription = async (req, res) => {
     }
 
     // Cek hotel ada
-    const hotel = await selectOne("list_hotel", { id_list_hotel: parseInt(id_list_hotel) });
+    const hotel = await queryHelper.selectOne("list_hotel", { id_list_hotel: parseInt(id_list_hotel) });
 
     if (!hotel) {
       return res.status(404).json({ message: "Hotel tidak ditemukan." });
@@ -33,9 +33,9 @@ export const updateHotelDescription = async (req, res) => {
     if (contact_email) updateData.contact_email = contact_email.trim();
     if (contact_phone) updateData.contact_phone = contact_phone.trim();
 
-    await update("list_hotel", updateData, { id_list_hotel: parseInt(id_list_hotel) });
+    await queryHelper.update("list_hotel", updateData, { id_list_hotel: parseInt(id_list_hotel) });
 
-    const updated = await selectOne("list_hotel", { id_list_hotel: parseInt(id_list_hotel) });
+    const updated = await queryHelper.selectOne("list_hotel", { id_list_hotel: parseInt(id_list_hotel) });
 
     res.json({
       message: "Deskripsi hotel berhasil diperbarui",
@@ -58,14 +58,14 @@ export const updateRoomCategory = async (req, res) => {
     }
 
     // Cek detail_kamar ada
-    const detail = await selectOne("detail_kamar", { id_detail_kamar: parseInt(id_detail_kamar) });
+    const detail = await queryHelper.selectOne("detail_kamar", { id_detail_kamar: parseInt(id_detail_kamar) });
 
     if (!detail) {
       return res.status(404).json({ message: "Kategori kamar tidak ditemukan." });
     }
 
     // Cek kategori kamar ini dipakai oleh hotel milik mitra
-    const roomsOfMitra = await select("list_kamar", {
+    const roomsOfMitra = await queryHelper.select("list_kamar", {
       where: {
         id_detail_kamar: parseInt(id_detail_kamar)
       }
@@ -75,7 +75,7 @@ export const updateRoomCategory = async (req, res) => {
     let hasAccess = false;
     if (roomsOfMitra.length > 0) {
       for (const room of roomsOfMitra) {
-        const hotel = await selectOne("list_hotel", { id_list_hotel: room.id_list_hotel });
+        const hotel = await queryHelper.selectOne("list_hotel", { id_list_hotel: room.id_list_hotel });
         if (hotel && hotel.id_company_profile === parseInt(id_company_profile)) {
           hasAccess = true;
           break;
@@ -101,9 +101,9 @@ export const updateRoomCategory = async (req, res) => {
     if (facility) updateData.facility = facility.trim();
     if (capacity !== undefined) updateData.capacity = parseInt(capacity);
 
-    await update("detail_kamar", updateData, { id_detail_kamar: parseInt(id_detail_kamar) });
+    await queryHelper.update("detail_kamar", updateData, { id_detail_kamar: parseInt(id_detail_kamar) });
 
-    const updated = await selectOne("detail_kamar", { id_detail_kamar: parseInt(id_detail_kamar) });
+    const updated = await queryHelper.selectOne("detail_kamar", { id_detail_kamar: parseInt(id_detail_kamar) });
 
     res.json({
       message: "Kategori kamar berhasil diperbarui",
@@ -114,9 +114,6 @@ export const updateRoomCategory = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
-// UC16 - Mengubah Status Kamar
-export const updateRoomStatus = async (req, res) => {
 
 // UC16 - Mengubah Status Kamar
 export const updateRoomStatus = async (req, res) => {
@@ -140,13 +137,13 @@ export const updateRoomStatus = async (req, res) => {
     }
 
     // Cek kamar ada
-    const room = await selectOne("list_kamar", { id_list_kamar: parseInt(id_list_kamar) });
+    const room = await queryHelper.selectOne("list_kamar", { id_list_kamar: parseInt(id_list_kamar) });
 
     if (!room) {
       return res.status(404).json({ message: "Kamar tidak ditemukan." });
     }
 
-    const hotel = await selectOne("list_hotel", { id_list_hotel: room.id_list_hotel });
+    const hotel = await queryHelper.selectOne("list_hotel", { id_list_hotel: room.id_list_hotel });
 
     // Cek kamar milik mitra ini
     if (!hotel || hotel.id_company_profile !== parseInt(id_company_profile)) {
@@ -157,7 +154,7 @@ export const updateRoomStatus = async (req, res) => {
       return res.status(400).json({ message: `Status kamar sudah '${normalizedStatus}', tidak ada perubahan.` });
     }
 
-    await update("list_kamar", { status: normalizedStatus }, { id_list_kamar: parseInt(id_list_kamar) });
+    await queryHelper.update("list_kamar", { status: normalizedStatus }, { id_list_kamar: parseInt(id_list_kamar) });
 
     res.json({
       message: "Status kamar berhasil diperbarui",
@@ -179,14 +176,14 @@ export const updateRoomStatus = async (req, res) => {
 // GET semua mitra (untuk admin)
 export const getAllMitra = async (req, res) => {
   try {
-    const companies = await select("company_profile", {
+    const companies = await queryHelper.select("company_profile", {
       order: { column: "company_name", ascending: true }
     });
 
     const mitraData = [];
 
     for (const company of companies) {
-      const hotel = await selectOne("list_hotel", { id_company_profile: company.id_company_profile });
+      const hotel = await queryHelper.selectOne("list_hotel", { id_company_profile: company.id_company_profile });
 
       mitraData.push({
         id_company_profile: company.id_company_profile,
@@ -207,12 +204,9 @@ export const getAllMitra = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-};
 
 // UC11 Menambahkan Mitra
 export const addMitra = async (req, res) => {
-  const connection = await pool.getConnection();
-
   try {
     const {
       id_company_profile,
@@ -234,36 +228,32 @@ export const addMitra = async (req, res) => {
     const emailNormalized = email.toLowerCase().trim();
     const usernameNormalized = username.trim();
 
-    await connection.beginTransaction();
+    // Check existing email
+    const existingEmail = await queryHelper.selectOne("company_profile", {
+      email: emailNormalized
+    });
 
-    const [existingEmail] = await connection.query(
-      `SELECT id_company_profile FROM company_profile WHERE email = ?`,
-      [emailNormalized]
-    );
-
-    if (existingEmail.length > 0) {
-      await connection.rollback();
+    if (existingEmail) {
       return res.status(409).json({ message: "Email mitra sudah terdaftar." });
     }
 
-    const [existingUsername] = await connection.query(
-      `SELECT id_company_profile FROM company_profile WHERE username = ?`,
-      [usernameNormalized]
-    );
+    // Check existing username
+    const existingUsername = await queryHelper.selectOne("company_profile", {
+      username: usernameNormalized
+    });
 
-    if (existingUsername.length > 0) {
-      await connection.rollback();
+    if (existingUsername) {
       return res.status(409).json({ message: "Username mitra sudah terdaftar." });
     }
 
+    // Check if id_user exists and is admin
     if (id_user) {
-      const [userRows] = await connection.query(
-        `SELECT id_user FROM user WHERE id_user = ? AND role = 'admin'`,
-        [parseInt(id_user)]
-      );
+      const user = await queryHelper.selectOne("user", {
+        id_user: parseInt(id_user),
+        role: "admin"
+      });
 
-      if (userRows.length === 0) {
-        await connection.rollback();
+      if (!user) {
         return res.status(404).json({ message: "User pemilik mitra tidak ditemukan." });
       }
     }
@@ -271,57 +261,51 @@ export const addMitra = async (req, res) => {
     let newCompanyProfileId = id_company_profile ? parseInt(id_company_profile) : null;
 
     if (newCompanyProfileId) {
-      const [existingId] = await connection.query(
-        `SELECT id_company_profile FROM company_profile WHERE id_company_profile = ?`,
-        [newCompanyProfileId]
-      );
+      const existingId = await queryHelper.selectOne("company_profile", {
+        id_company_profile: newCompanyProfileId
+      });
 
-      if (existingId.length > 0) {
-        await connection.rollback();
+      if (existingId) {
         return res.status(409).json({ message: "ID Company Profile sudah digunakan." });
       }
     } else {
-      const [[{ nextId }]] = await connection.query(
-        `SELECT COALESCE(MAX(id_company_profile), 0) + 1 AS nextId FROM company_profile`
-      );
-      newCompanyProfileId = nextId;
+      // Get max id and increment
+      const allCompanies = await queryHelper.select("company_profile", {
+        order: { column: "id_company_profile", ascending: false },
+        limit: 1
+      });
+      newCompanyProfileId = (allCompanies.length > 0 ? allCompanies[0].id_company_profile : 0) + 1;
     }
 
-    await connection.query(
-      `INSERT INTO company_profile
-       (id_company_profile, company_name, address, phone_number, email, username, id_user, password)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        newCompanyProfileId,
-        company_name.trim(),
-        address.trim(),
-        phone_number.trim(),
-        emailNormalized,
-        usernameNormalized,
-        id_user ? parseInt(id_user) : null,
-        password
-      ]
-    );
+    // Insert new company profile
+    const result = await queryHelper.insert("company_profile", {
+      id_company_profile: newCompanyProfileId,
+      company_name: company_name.trim(),
+      address: address.trim(),
+      phone_number: phone_number.trim(),
+      email: emailNormalized,
+      username: usernameNormalized,
+      id_user: id_user ? parseInt(id_user) : null,
+      password
+    });
 
-    const [newMitra] = await connection.query(
-      `SELECT id_company_profile, company_name, address, phone_number, email, username, id_user
-       FROM company_profile
-       WHERE id_company_profile = ?`,
-      [newCompanyProfileId]
-    );
-
-    await connection.commit();
+    const newMitra = result && result.length > 0 ? result[0] : {
+      id_company_profile: newCompanyProfileId,
+      company_name: company_name.trim(),
+      address: address.trim(),
+      phone_number: phone_number.trim(),
+      email: emailNormalized,
+      username: usernameNormalized,
+      id_user: id_user ? parseInt(id_user) : null
+    };
 
     res.status(201).json({
       message: "Mitra berhasil ditambahkan",
-      data: newMitra[0]
+      data: newMitra
     });
 
   } catch (error) {
-    await connection.rollback();
     res.status(500).json({ error: error.message });
-  } finally {
-    connection.release();
   }
 };
 
@@ -334,43 +318,41 @@ export const deleteMitra = async (req, res) => {
       return res.status(400).json({ message: "ID Company Profile wajib diisi." });
     }
 
-    const [mitraRows] = await pool.query(
-      `SELECT id_company_profile, company_name, email FROM company_profile WHERE id_company_profile = ?`,
-      [parseInt(id_company_profile)]
-    );
+    const mitra = await queryHelper.selectOne("company_profile", {
+      id_company_profile: parseInt(id_company_profile)
+    });
 
-    if (mitraRows.length === 0) {
+    if (!mitra) {
       return res.status(404).json({ message: "Mitra tidak ditemukan." });
     }
 
-    const [[hotelCount]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM list_hotel WHERE id_company_profile = ?`,
-      [parseInt(id_company_profile)]
-    );
+    // Count related hotels
+    const hotelCount = await queryHelper.count("list_hotel", {
+      id_company_profile: parseInt(id_company_profile)
+    });
 
-    const [[reservationCount]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM history_purchase WHERE id_company_profile = ?`,
-      [parseInt(id_company_profile)]
-    );
+    // Count related reservations
+    const reservationCount = await queryHelper.count("history_purchase", {
+      id_company_profile: parseInt(id_company_profile)
+    });
 
-    if (hotelCount.total > 0 || reservationCount.total > 0) {
+    if (hotelCount > 0 || reservationCount > 0) {
       return res.status(409).json({
         message: "Mitra tidak bisa dihapus karena masih memiliki hotel atau riwayat reservasi.",
         data: {
-          total_hotel: hotelCount.total,
-          total_reservasi: reservationCount.total
+          total_hotel: hotelCount,
+          total_reservasi: reservationCount
         }
       });
     }
 
-    await pool.query(
-      `DELETE FROM company_profile WHERE id_company_profile = ?`,
-      [parseInt(id_company_profile)]
-    );
+    await queryHelper.deleteRecord("company_profile", {
+      id_company_profile: parseInt(id_company_profile)
+    });
 
     res.json({
       message: "Mitra berhasil dihapus",
-      data: mitraRows[0]
+      data: mitra
     });
 
   } catch (error) {
@@ -388,77 +370,53 @@ export const getRevenue = async (req, res) => {
       return res.status(400).json({ message: "ID Company Profile wajib diisi." });
     }
 
-    const [mitraRows] = await pool.query(
-      `SELECT id_company_profile, company_name FROM company_profile WHERE id_company_profile = ?`,
-      [parseInt(id_company_profile)]
-    );
+    // Verify mitra exists
+    const mitra = await queryHelper.selectOne("company_profile", {
+      id_company_profile: parseInt(id_company_profile)
+    });
 
-    if (mitraRows.length === 0) {
+    if (!mitra) {
       return res.status(404).json({ message: "Mitra tidak ditemukan." });
     }
 
-    let where = `WHERE hp.id_company_profile = ? AND hp.status <> 'cancelled'`;
-    const params = [parseInt(id_company_profile)];
+    // Use RPC for complex queries with JOINs and aggregations
+    const params = {
+      p_id_company_profile: parseInt(id_company_profile),
+      p_start_date: start_date || null,
+      p_end_date: end_date || null,
+      p_id_list_hotel: id_list_hotel ? parseInt(id_list_hotel) : null
+    };
 
-    if (id_list_hotel) {
-      where += ` AND lh.id_list_hotel = ?`;
-      params.push(parseInt(id_list_hotel));
-    }
+    // Call RPC function for revenue summary
+    const summary = await queryHelper.callRpc("get_revenue_summary", params);
 
-    if (start_date) {
-      where += ` AND hp.purchase_date >= ?`;
-      params.push(start_date);
-    }
-
-    if (end_date) {
-      where += ` AND hp.purchase_date < DATE_ADD(?, INTERVAL 1 DAY)`;
-      params.push(end_date);
-    }
-
-    const [[summary]] = await pool.query(
-      `SELECT
-        COUNT(hp.id_history) AS total_transaksi,
-        COALESCE(SUM(hp.amount), 0) AS total_pendapatan,
-        COALESCE(AVG(hp.amount), 0) AS rata_rata_transaksi
-      FROM history_purchase hp
-      JOIN list_kamar lk ON hp.id_list_kamar = lk.id_list_kamar
-      JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-      ${where}`,
-      params
-    );
-
-    const [byHotel] = await pool.query(
-      `SELECT
-        lh.id_list_hotel,
-        lh.hotel_name,
-        COUNT(hp.id_history) AS total_transaksi,
-        COALESCE(SUM(hp.amount), 0) AS total_pendapatan
-      FROM history_purchase hp
-      JOIN list_kamar lk ON hp.id_list_kamar = lk.id_list_kamar
-      JOIN list_hotel lh ON lk.id_list_hotel = lh.id_list_hotel
-      ${where}
-      GROUP BY lh.id_list_hotel, lh.hotel_name
-      ORDER BY total_pendapatan DESC`,
-      params
-    );
+    // Call RPC function for revenue by hotel
+    const byHotel = await queryHelper.callRpc("get_revenue_by_hotel", params);
 
     res.json({
       message: "Pendapatan mitra berhasil diambil",
       data: {
-        mitra: mitraRows[0],
+        mitra: {
+          id_company_profile: mitra.id_company_profile,
+          company_name: mitra.company_name
+        },
         filter: {
           start_date: start_date || null,
           end_date: end_date || null,
           id_list_hotel: id_list_hotel ? parseInt(id_list_hotel) : null
         },
-        summary: {
-          total_transaksi: summary.total_transaksi,
-          total_pendapatan: parseFloat(summary.total_pendapatan),
-          rata_rata_transaksi: parseFloat(summary.rata_rata_transaksi)
+        summary: summary && summary.length > 0 ? {
+          total_transaksi: summary[0].total_transaksi || 0,
+          total_pendapatan: parseFloat(summary[0].total_pendapatan || 0),
+          rata_rata_transaksi: parseFloat(summary[0].rata_rata_transaksi || 0)
+        } : {
+          total_transaksi: 0,
+          total_pendapatan: 0,
+          rata_rata_transaksi: 0
         },
-        by_hotel: byHotel.map(item => ({
+        by_hotel: (byHotel || []).map(item => ({
           ...item,
-          total_pendapatan: parseFloat(item.total_pendapatan)
+          total_pendapatan: parseFloat(item.total_pendapatan || 0)
         }))
       }
     });

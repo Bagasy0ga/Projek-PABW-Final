@@ -1,4 +1,5 @@
 import supabase from "../config/db.js";
+import * as queryHelper from "../utils/queryHelper.js";
 
 const LLM_PROVIDER = String(process.env.LLM_PROVIDER || "ollama").toLowerCase().trim();
 
@@ -742,63 +743,12 @@ export const recommendHotelForCustomer = async (req, res) => {
       params.push(inferredGuestCount);
     }
 
-    const [rows] = await pool.query(
-      `
-      SELECT
-        lh.id_list_hotel,
-        lh.hotel_name,
-        lh.location,
-        lh.contact_person,
-        lh.contact_email,
-        lh.contact_phone,
-
-        COUNT(DISTINCT lk.id_list_kamar) AS available_room_count,
-        MIN(lk.price) AS min_price,
-        MAX(lk.price) AS max_price,
-        MAX(dk.capacity) AS max_capacity,
-
-        GROUP_CONCAT(DISTINCT dk.type_room ORDER BY dk.type_room SEPARATOR ', ') AS available_room_types,
-        GROUP_CONCAT(DISTINCT dk.facility SEPARATOR ', ') AS all_facilities,
-
-        COALESCE(rt.avg_rating, 0) AS avg_rating,
-        COALESCE(rt.total_rating, 0) AS total_rating
-
-      FROM list_hotel lh
-
-      JOIN list_kamar lk
-        ON lk.id_list_hotel = lh.id_list_hotel
-
-      JOIN detail_kamar dk
-        ON lk.id_detail_kamar = dk.id_detail_kamar
-
-      LEFT JOIN (
-        SELECT
-          id_list_hotel,
-          AVG(rating) AS avg_rating,
-          COUNT(*) AS total_rating
-        FROM hotel_rating
-        GROUP BY id_list_hotel
-      ) rt
-        ON rt.id_list_hotel = lh.id_list_hotel
-
-      WHERE ${whereClauses.join(" AND ")}
-
-      GROUP BY
-        lh.id_list_hotel,
-        lh.hotel_name,
-        lh.location,
-        lh.contact_person,
-        lh.contact_email,
-        lh.contact_phone,
-        rt.avg_rating,
-        rt.total_rating
-
-      ORDER BY min_price ASC
-
-      LIMIT ?
-      `,
-      [...params, limitValue]
-    );
+    const rows = await queryHelper.callRpc("get_available_hotels_with_filters", {
+      location_filter: location || null,
+      budget_max: budgetMax || null,
+      guest_count: inferredGuestCount || null,
+      limit_count: limitValue
+    });
 
     if (rows.length === 0) {
       return res.status(404).json({

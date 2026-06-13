@@ -798,12 +798,7 @@ export const verifyLoginOtp = async (req, res) => {
       user = normalizeUser(users[0]);
     }
 
-    await pool.query(
-      `UPDATE email_verification_codes
-       SET consumed_at = NOW()
-       WHERE id_code = ?`,
-      [code.id_code]
-    );
+    await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
     const session = await createLoginSession(user);
 
@@ -921,12 +916,7 @@ export const forgotPassword = async (req, res) => {
 
     const otp = createOtp();
 
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    await saveOtp(connection, emailNormalized, "reset_password", otp);
-
-    await connection.commit();
+    await saveOtp(emailNormalized, "reset_password", otp);
 
     try {
       await sendResetPasswordOtp(emailNormalized, account.name, otp);
@@ -952,20 +942,10 @@ export const forgotPassword = async (req, res) => {
       }
     });
   } catch (error) {
-    if (connection) {
-      try {
-        await connection.rollback();
-      } catch {}
-    }
-
     return res.status(500).json({
       message: "Gagal mengirim OTP reset password.",
       error: error.message
     });
-  } finally {
-    if (connection) {
-      connection.release();
-    }
   }
 };
 
@@ -1007,16 +987,15 @@ export const resetPasswordWithOtp = async (req, res) => {
       });
     }
 
-    const [codes] = await pool.query(
-      `SELECT id_code, otp_hash, attempts, expires_at
-       FROM email_verification_codes
-       WHERE email = ?
-       AND purpose = 'reset_password'
-       AND consumed_at IS NULL
-       ORDER BY id_code DESC
-       LIMIT 1`,
-      [emailNormalized]
-    );
+    const codes = await queryHelper.select("email_verification_codes", {
+      where: {
+        email: emailNormalized,
+        purpose: "reset_password",
+        consumed_at: null
+      },
+      order: { column: "id_code", ascending: false },
+      limit: 1
+    });
 
     if (codes.length === 0) {
       return res.status(400).json({
@@ -1056,29 +1035,14 @@ export const resetPasswordWithOtp = async (req, res) => {
     const newPasswordHash = await hashPassword(new_password);
 
     if (userTypeNormalized === "customer") {
-      await pool.query(
-        `UPDATE user
-         SET password = ?
-         WHERE email = ? AND role = 'customer'`,
-        [newPasswordHash, emailNormalized]
-      );
+      await queryHelper.update("user", { password: newPasswordHash }, { email: emailNormalized, role: "customer" });
     }
 
     if (userTypeNormalized === "mitra") {
-      await pool.query(
-        `UPDATE company_profile
-         SET password = ?
-         WHERE email = ?`,
-        [newPasswordHash, emailNormalized]
-      );
+      await queryHelper.update("company_profile", { password: newPasswordHash }, { email: emailNormalized });
     }
 
-    await pool.query(
-      `UPDATE email_verification_codes
-       SET consumed_at = NOW()
-       WHERE id_code = ?`,
-      [code.id_code]
-    );
+    await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
     return res.json({
       message: "Password berhasil direset."
@@ -1092,8 +1056,6 @@ export const resetPasswordWithOtp = async (req, res) => {
 };
 
 export const changePassword = async (req, res) => {
-  let connection;
-
   try {
     const { old_password, new_password } = req.body;
 
@@ -1122,13 +1084,10 @@ export const changePassword = async (req, res) => {
     let storedPassword = null;
 
     if (userRole === "customer" || userRole === "admin") {
-      const [users] = await pool.query(
-        `SELECT id_user, name, email, password
-         FROM user
-         WHERE id_user = ?
-         LIMIT 1`,
-        [userId]
-      );
+      const users = await queryHelper.select("user", {
+        where: { id_user: userId },
+        limit: 1
+      });
 
       if (users.length === 0) {
         return res.status(404).json({
@@ -1145,13 +1104,10 @@ export const changePassword = async (req, res) => {
     }
 
     if (userRole === "mitra") {
-      const [mitraRows] = await pool.query(
-        `SELECT id_company_profile, company_name, email, password
-         FROM company_profile
-         WHERE id_company_profile = ?
-         LIMIT 1`,
-        [userId]
-      );
+      const mitraRows = await queryHelper.select("company_profile", {
+        where: { id_company_profile: userId },
+        limit: 1
+      });
 
       if (mitraRows.length === 0) {
         return res.status(404).json({
@@ -1183,12 +1139,7 @@ export const changePassword = async (req, res) => {
 
     const otp = createOtp();
 
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    await saveOtp(connection, account.email, "change_password", otp);
-
-    await connection.commit();
+    await saveOtp(account.email, "change_password", otp);
 
     try {
       await sendChangePasswordOtp(account.email, account.name, otp);
@@ -1214,20 +1165,10 @@ export const changePassword = async (req, res) => {
       }
     });
   } catch (error) {
-    if (connection) {
-      try {
-        await connection.rollback();
-      } catch {}
-    }
-
     return res.status(500).json({
       message: "Gagal mengirim OTP ganti password.",
       error: error.message
     });
-  } finally {
-    if (connection) {
-      connection.release();
-    }
   }
 };
 
@@ -1259,13 +1200,10 @@ export const confirmChangePassword = async (req, res) => {
     let email = null;
 
     if (userRole === "customer" || userRole === "admin") {
-      const [users] = await pool.query(
-        `SELECT email
-         FROM user
-         WHERE id_user = ?
-         LIMIT 1`,
-        [userId]
-      );
+      const users = await queryHelper.select("user", {
+        where: { id_user: userId },
+        limit: 1
+      });
 
       if (users.length === 0) {
         return res.status(404).json({
@@ -1277,13 +1215,10 @@ export const confirmChangePassword = async (req, res) => {
     }
 
     if (userRole === "mitra") {
-      const [mitraRows] = await pool.query(
-        `SELECT email
-         FROM company_profile
-         WHERE id_company_profile = ?
-         LIMIT 1`,
-        [userId]
-      );
+      const mitraRows = await queryHelper.select("company_profile", {
+        where: { id_company_profile: userId },
+        limit: 1
+      });
 
       if (mitraRows.length === 0) {
         return res.status(404).json({
@@ -1302,16 +1237,15 @@ export const confirmChangePassword = async (req, res) => {
 
     const cleanOtp = otp.trim();
 
-    const [codes] = await pool.query(
-      `SELECT id_code, otp_hash, attempts, expires_at
-       FROM email_verification_codes
-       WHERE email = ?
-       AND purpose = 'change_password'
-       AND consumed_at IS NULL
-       ORDER BY id_code DESC
-       LIMIT 1`,
-      [email]
-    );
+    const codes = await queryHelper.select("email_verification_codes", {
+      where: {
+        email: email,
+        purpose: "change_password",
+        consumed_at: null
+      },
+      order: { column: "id_code", ascending: false },
+      limit: 1
+    });
 
     if (codes.length === 0) {
       return res.status(400).json({
@@ -1351,29 +1285,14 @@ export const confirmChangePassword = async (req, res) => {
     const newPasswordHash = await hashPassword(new_password);
 
     if (userRole === "customer" || userRole === "admin") {
-      await pool.query(
-        `UPDATE user
-         SET password = ?
-         WHERE id_user = ?`,
-        [newPasswordHash, userId]
-      );
+      await queryHelper.update("user", { password: newPasswordHash }, { id_user: userId });
     }
 
     if (userRole === "mitra") {
-      await pool.query(
-        `UPDATE company_profile
-         SET password = ?
-         WHERE id_company_profile = ?`,
-        [newPasswordHash, userId]
-      );
+      await queryHelper.update("company_profile", { password: newPasswordHash }, { id_company_profile: userId });
     }
 
-    await pool.query(
-      `UPDATE email_verification_codes
-       SET consumed_at = NOW()
-       WHERE id_code = ?`,
-      [code.id_code]
-    );
+    await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
     return res.json({
       message: "Password berhasil diubah."
@@ -1408,16 +1327,15 @@ export const verifyResetPasswordOtp = async (req, res) => {
       });
     }
 
-    const [codes] = await pool.query(
-      `SELECT id_code, otp_hash, attempts, expires_at
-       FROM email_verification_codes
-       WHERE email = ?
-       AND purpose = 'reset_password'
-       AND consumed_at IS NULL
-       ORDER BY id_code DESC
-       LIMIT 1`,
-      [emailNormalized]
-    );
+    const codes = await queryHelper.select("email_verification_codes", {
+      where: {
+        email: emailNormalized,
+        purpose: "reset_password",
+        consumed_at: null
+      },
+      order: { column: "id_code", ascending: false },
+      limit: 1
+    });
 
     if (codes.length === 0) {
       return res.status(400).json({
@@ -1454,12 +1372,7 @@ export const verifyResetPasswordOtp = async (req, res) => {
       });
     }
 
-    await pool.query(
-      `UPDATE email_verification_codes
-       SET consumed_at = NOW()
-       WHERE id_code = ?`,
-      [code.id_code]
-    );
+    await queryHelper.update("email_verification_codes", { consumed_at: new Date().toISOString() }, { id_code: code.id_code });
 
     const resetToken = jwt.sign(
       {
@@ -1528,21 +1441,11 @@ export const confirmResetPassword = async (req, res) => {
     const newPasswordHash = await hashPassword(new_password);
 
     if (userTypeNormalized === "customer") {
-      await pool.query(
-        `UPDATE user
-         SET password = ?
-         WHERE email = ? AND role = 'customer'`,
-        [newPasswordHash, emailNormalized]
-      );
+      await queryHelper.update("user", { password: newPasswordHash }, { email: emailNormalized, role: "customer" });
     }
 
     if (userTypeNormalized === "mitra") {
-      await pool.query(
-        `UPDATE company_profile
-         SET password = ?
-         WHERE email = ?`,
-        [newPasswordHash, emailNormalized]
-      );
+      await queryHelper.update("company_profile", { password: newPasswordHash }, { email: emailNormalized });
     }
 
     return res.json({
@@ -1572,20 +1475,12 @@ export const updateProfile = async (req, res) => {
     const cleanPhone = phone_number || "";
 
     if (userRole === "customer" || userRole === "admin") {
-      await pool.query(
-        `UPDATE user
-         SET name = ?, phone_number = ?
-         WHERE id_user = ?`,
-        [cleanName, cleanPhone, userId]
-      );
+      await queryHelper.update("user", { name: cleanName, phone_number: cleanPhone }, { id_user: userId });
 
-      const [updatedRows] = await pool.query(
-        `SELECT id_user, name, email, phone_number, role
-         FROM user
-         WHERE id_user = ?
-         LIMIT 1`,
-        [userId]
-      );
+      const updatedRows = await queryHelper.select("user", {
+        where: { id_user: userId },
+        limit: 1
+      });
 
       if (updatedRows.length === 0) {
         return res.status(404).json({
@@ -1600,20 +1495,12 @@ export const updateProfile = async (req, res) => {
     }
 
     if (userRole === "mitra") {
-      await pool.query(
-        `UPDATE company_profile
-         SET company_name = ?, phone_number = ?
-         WHERE id_company_profile = ?`,
-        [cleanName, cleanPhone, userId]
-      );
+      await queryHelper.update("company_profile", { company_name: cleanName, phone_number: cleanPhone }, { id_company_profile: userId });
 
-      const [updatedRows] = await pool.query(
-        `SELECT id_company_profile, company_name, email, phone_number, address
-         FROM company_profile
-         WHERE id_company_profile = ?
-         LIMIT 1`,
-        [userId]
-      );
+      const updatedRows = await queryHelper.select("company_profile", {
+        where: { id_company_profile: userId },
+        limit: 1
+      });
 
       if (updatedRows.length === 0) {
         return res.status(404).json({
