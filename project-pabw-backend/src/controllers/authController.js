@@ -530,6 +530,7 @@ export const login = async (req, res) => {
 
     const cleanIdentifier = identifier.trim();
     const isNumeric = /^[0-9]+$/.test(cleanIdentifier);
+    const isEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanIdentifier);
 
     let user = null;
     let tableTarget = null;
@@ -537,6 +538,7 @@ export const login = async (req, res) => {
     let storedPassword = null;
 
     if (isNumeric) {
+      // Login mitra via id_company_profile
       const idCompanyProfile = parseInt(cleanIdentifier, 10);
 
       const mitraRows = await queryHelper.select("company_profile", {
@@ -570,34 +572,90 @@ export const login = async (req, res) => {
       storedPassword = mitra.password;
       tableTarget = "company_profile";
       targetId = mitra.id_company_profile;
+    } else if (!isEmailFormat) {
+      // Bukan angka dan bukan format email -> kemungkinan username mitra
+      const mitraRows = await queryHelper.select("company_profile", {
+        where: { username: cleanIdentifier },
+        limit: 1
+      });
+
+      if (mitraRows.length === 0) {
+        return res.status(401).json({
+          message: "Mitra tidak terdaftar."
+        });
+      }
+
+      const mitra = mitraRows[0];
+
+      if (!mitra.email) {
+        return res.status(400).json({
+          message: "Akun mitra ini tidak memiliki email."
+        });
+      }
+
+      user = {
+        id: mitra.id_company_profile,
+        nama: mitra.company_name,
+        email: normalizeEmail(mitra.email),
+        role: "mitra",
+        phone_number: mitra.phone_number || "",
+        alamat: mitra.address || ""
+      };
+
+      storedPassword = mitra.password;
+      tableTarget = "company_profile";
+      targetId = mitra.id_company_profile;
     } else {
       const emailNormalized = normalizeEmail(cleanIdentifier);
 
-      const userRows = await queryHelper.select("user", {
+      // Coba cari di company_profile dulu (mitra bisa login pakai email juga)
+      const mitraRows = await queryHelper.select("company_profile", {
         where: { email: emailNormalized },
         limit: 1
       });
 
-      if (userRows.length === 0) {
-        return res.status(401).json({
-          message: "Email tidak terdaftar."
+      if (mitraRows.length > 0) {
+        const mitra = mitraRows[0];
+
+        user = {
+          id: mitra.id_company_profile,
+          nama: mitra.company_name,
+          email: normalizeEmail(mitra.email),
+          role: "mitra",
+          phone_number: mitra.phone_number || "",
+          alamat: mitra.address || ""
+        };
+
+        storedPassword = mitra.password;
+        tableTarget = "company_profile";
+        targetId = mitra.id_company_profile;
+      } else {
+        const userRows = await queryHelper.select("user", {
+          where: { email: emailNormalized },
+          limit: 1
         });
+
+        if (userRows.length === 0) {
+          return res.status(401).json({
+            message: "Email tidak terdaftar."
+          });
+        }
+
+        const selectedUser = userRows[0];
+
+        if (selectedUser.role === "customer" && Number(selectedUser.is_verified) !== 1) {
+          return res.status(403).json({
+            message: "Email belum diverifikasi. Silakan verifikasi OTP terlebih dahulu.",
+            requires_verification: true,
+            email: selectedUser.email
+          });
+        }
+
+        user = normalizeUser(selectedUser);
+        storedPassword = selectedUser.password;
+        tableTarget = "user";
+        targetId = selectedUser.id_user;
       }
-
-      const selectedUser = userRows[0];
-
-      if (selectedUser.role === "customer" && Number(selectedUser.is_verified) !== 1) {
-        return res.status(403).json({
-          message: "Email belum diverifikasi. Silakan verifikasi OTP terlebih dahulu.",
-          requires_verification: true,
-          email: selectedUser.email
-        });
-      }
-
-      user = normalizeUser(selectedUser);
-      storedPassword = selectedUser.password;
-      tableTarget = "user";
-      targetId = selectedUser.id_user;
     }
 
     const isPasswordValid = await verifyPassword(password, storedPassword);
