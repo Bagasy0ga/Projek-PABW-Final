@@ -18,17 +18,21 @@ export const useBookingStore = defineStore('booking', () => {
     showBookingModal.value = false
   }
 
-  function saveBooking(booking) {
-    bookings.value.push(booking)
-    localStorage.setItem('pabwBookings', JSON.stringify(bookings.value))
-    lastBooking.value = booking
-    showBookingModal.value = false
+  function openConfirmationModal() {
     showConfirmationModal.value = true
   }
 
   function closeConfirmationModal() {
     showConfirmationModal.value = false
     lastBooking.value = null
+  }
+
+  function saveBooking(booking) {
+    bookings.value.push(booking)
+    localStorage.setItem('pabwBookings', JSON.stringify(bookings.value))
+    lastBooking.value = booking
+    showBookingModal.value = false
+    showConfirmationModal.value = true
   }
 
   function getBookingsByUser(userId) {
@@ -75,7 +79,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   return {
     currentRoom, bookings, showBookingModal, showConfirmationModal, lastBooking,
-    setRoom, closeBookingModal, saveBooking, closeConfirmationModal,
+    setRoom, closeBookingModal, openConfirmationModal, saveBooking, closeConfirmationModal,
     getBookingsByUser, getLatestBookingForHotel, syncBookingsFromBackend, formatCurrency
   }
 })
