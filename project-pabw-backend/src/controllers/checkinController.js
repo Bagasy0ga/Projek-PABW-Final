@@ -50,7 +50,7 @@ export const performCheckin = async (req, res) => {
 // Mendapatkan detail reservasi untuk checkin
 export const getReservationForCheckin = async (req, res) => {
     try {
-        const { id_user, id_history } = req.params;
+        const { id_user, id_history } = req.params || {};
 
         if (!id_user) {
             return res.status(400).json({
@@ -99,7 +99,7 @@ export const getReservationForCheckin = async (req, res) => {
 // Mendapatkan checkin history
 export const getCheckinHistory = async (req, res) => {
     try {
-        const { id_user } = req.params;
+        const { id_user } = req.query;
 
         if (!id_user) {
             return res.status(400).json({

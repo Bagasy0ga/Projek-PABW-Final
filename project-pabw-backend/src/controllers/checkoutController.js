@@ -61,7 +61,7 @@ export const performCheckout = async (req, res) => {
 // Mendapatkan detail masa menginap sebelum checkout
 export const getCheckoutDetails = async (req, res) => {
     try {
-        const { id_history, id_user } = req.params;
+        const { id_history, id_user } = req.query;
 
         if (!id_history || !id_user) {
             return res.status(400).json({
@@ -122,7 +122,7 @@ export const getCheckoutDetails = async (req, res) => {
 // Mendapatkan checkout history
 export const getCheckoutHistory = async (req, res) => {
     try {
-        const { id_user } = req.params;
+        const { id_user } = req.query;
 
         if (!id_user) {
             return res.status(400).json({
