@@ -156,7 +156,9 @@ export const getHotelRatings = async (req, res) => {
     }
 
     const data = result[0];
-    const ratings = data.ratings ? JSON.parse(data.ratings) : [];
+    const ratings = data.ratings 
+      ? (typeof data.ratings === "string" ? JSON.parse(data.ratings) : data.ratings)
+      : [];
 
     return res.json({
       message: "Rating hotel berhasil diambil",
