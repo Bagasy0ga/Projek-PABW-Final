@@ -8,7 +8,7 @@ const __dirname = dirname(__filename);
 
 dotenv.config({ path: resolve(__dirname, "../../.env") });
 
-const requiredEnv = ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"];
+const requiredEnv = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"];
 
 for (const key of requiredEnv) {
   if (!process.env[key]) {
@@ -18,7 +18,7 @@ for (const key of requiredEnv) {
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   {
     auth: {
       autoRefreshToken: false,
