@@ -722,7 +722,7 @@ export const recommendHotelForCustomer = async (req, res) => {
 
     if (!location && !budgetMax && !inferredGuestCount && preferred_facilities.length === 0 && !purpose) {
       return res.status(400).json({
-        message: "Minimal isi salah satu preferensi: location, budget_max, guest_count, preferred_facilities, atau purpose."
+        message: "Tolong beritahu kami preferensi Anda seperti lokasi, budget, jumlah tamu, fasilitas yang diinginkan, atau tujuan perjalanan. Kami butuh setidaknya satu informasi untuk merekomendasikan hotel yang sesuai! 😊"
       });
     }
 
