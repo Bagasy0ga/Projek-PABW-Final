@@ -172,21 +172,6 @@ export const getAvailableRooms = async (req, res) => {
   }
 };
 
-    res.json({
-      message: "Tipe kamar tersedia berhasil diambil",
-      data: rooms,
-      pagination: {
-        total,
-        limit: limitVal,
-        offset: offsetVal
-      }
-    });
-
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
 // UC18 Melihat Ketersediaan Kamar
 export const getRoomAvailability = async (req, res) => {
   try {
